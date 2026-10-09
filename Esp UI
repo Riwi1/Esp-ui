@@ -1,7 +1,7 @@
 --=====================================================================
--- MONOCHROME TEST SUITE  •  ESP (Players + Computers) + SPEED  •  5v1
--- Menu: preto e branco
--- ESP: VERDE (aliado) • VERMELHO (fera) • AMARELO (computadores)
+-- MONOCHROME TEST SUITE  •  ESP + SPEED  •  Versão Final Completa
+-- Menu P&B • ESP: verde=aliado, vermelho=fera, amarelo=computadores
+-- Filtro anti-lag + anti-falso-positivo (arcade/TV/etc)
 --=====================================================================
 
 --// SERVIÇOS
@@ -46,9 +46,9 @@ local PALETTE = {
 -- CORES DO ESP
 --=====================================================================
 local ESP_COLORS = {
-    Ally      = Color3.fromRGB(80, 220, 120),   -- verde
-    Beast     = Color3.fromRGB(230, 60, 60),    -- vermelho
-    Computer  = Color3.fromRGB(255, 210, 60),   -- amarelo
+    Ally     = Color3.fromRGB(80, 220, 120),    -- verde
+    Beast    = Color3.fromRGB(230, 60, 60),     -- vermelho
+    Computer = Color3.fromRGB(255, 210, 60),    -- amarelo
 }
 
 --=====================================================================
@@ -56,8 +56,8 @@ local ESP_COLORS = {
 --=====================================================================
 local CONFIG = {
     ESP = {
-        Enabled       = false,
         -- Jogadores
+        Enabled       = false,
         ShowPlayers   = true,
         ShowBox       = true,
         ShowName      = true,
@@ -68,30 +68,75 @@ local CONFIG = {
         Transparency  = 0.15,
         Thickness     = 1.5,
         MaxDistance   = 500,
+
         -- Computadores
         ShowComputers       = true,
         ComputerBox         = true,
         ComputerName        = true,
         ComputerDistance    = true,
         ComputerHighlight   = true,
-        ComputerMaxDistance = 1000,
+        ComputerMaxDistance = 250,
+        ComputerRescanRate  = 2.0,
+        ComputerMaxCount    = 30,
+        ComputerStrictMode  = true,
+
         -- Detecção da Fera
-        BeastNameMatch = {
-            "beast", "fera", "monster", "monstro", "killer"
-        },
-        BeastTeamMatch = {
-            "beast", "fera", "monster", "monstro", "killer"
-        },
+        BeastNameMatch = { "beast", "fera", "monster", "monstro", "killer" },
+        BeastTeamMatch = { "beast", "fera", "monster", "monstro", "killer" },
         BeastAttribute = "IsBeast",
-        -- Detecção de Computadores
-        ComputerNameMatch = {
-            "computer", "computador", "pc", "laptop", "objective",
-            "generator", "gerador", "terminal", "hack", "console",
-            "monitor", "screen", "tela", "panel", "painel"
+
+        -- ===== DETECÇÃO DE COMPUTADORES (anti-falso-positivo) =====
+        -- Whitelist FORTE (sempre pega, mesmo no modo estrito)
+        ComputerStrongMatch = {
+            "objectivecomputer", "objective_computer", "objective computer",
+            "hackable", "hackablecomputer", "hackable_computer",
+            "generator", "gerador", "objectivegenerator",
+            "terminal", "objective_terminal", "objectiveterminal",
+            "objective", "objetivo",
+            "computer", "computador",
         },
+
+        -- Whitelist FRACA (só pega em modo aberto)
+        ComputerWeakMatch = {
+            "pc", "laptop", "console", "monitor", "screen", "tela",
+            "panel", "painel", "hack", "task", "tarefa",
+        },
+
+        -- Blacklist (NUNCA pega, mesmo se bater whitelist)
+        ComputerBlacklist = {
+            "arcade", "arcademachine", "fliperama", "flipperama",
+            "tv", "television", "televisao", "televisão",
+            "decor", "decoration", "decoração", "decoracao",
+            "poster", "quadro", "frame", "painting", "pintura",
+            "lamp", "light", "luz", "poste", "streetlight",
+            "sign", "placa", "letreiro", "billboard", "outdoor",
+            "radio", "speaker", "sound", "som", "vending",
+            "vendingmachine", "atm", "clock", "relogio", "relógio",
+            "timer", "phone", "telefone", "cellphone", "celular",
+            "fridge", "geladeira", "microwave", "microondas",
+            "furniture", "movel", "móvel", "sofa", "sofá",
+            "chair", "cadeira", "table", "mesa", "desk",
+            "window", "janela", "door", "porta", "wall", "parede",
+        },
+
+        -- Tags preferenciais
         ComputerTagMatch = {
-            "computer", "computador", "objective", "generator",
-            "terminal", "hackable", "hack", "objective_computer"
+            "objective_computer", "objectivecomputer", "computer_objective",
+            "hackable", "hackable_computer", "objective", "objetivo",
+            "generator", "gerador", "terminal", "task_computer",
+            "objective_terminal", "task",
+        },
+
+        -- Tags que SEMPRE descartam
+        ComputerTagBlacklist = {
+            "decor", "decoration", "arcade", "tv", "poster",
+            "furniture", "sign", "billboard", "background", "prop",
+        },
+
+        -- Containers que NÃO devem ser escaneados
+        MapExcludeKeywords = {
+            "workspace_storage", "storage", "cache", "template",
+            "mapstorage", "unused", "backup", "preload",
         },
     },
     Speed = {
@@ -142,8 +187,7 @@ end
 -- DETECÇÃO DA FERA
 --=====================================================================
 local function isBeast(plr)
-    local attr = plr:GetAttribute(CONFIG.ESP.BeastAttribute)
-    if attr == true then return true end
+    if plr:GetAttribute(CONFIG.ESP.BeastAttribute) == true then return true end
 
     local char = plr.Character
     if char then
@@ -178,18 +222,77 @@ local function getRoleLabel(plr)
 end
 
 --=====================================================================
--- DETECÇÃO DE COMPUTADORES
+-- MAPA ATIVO
+--=====================================================================
+local function getActiveMapRoot()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+
+    local current = char
+    local lastModel = nil
+    while current and current.Parent and current.Parent ~= Workspace do
+        if current:IsA("Model") then lastModel = current end
+        current = current.Parent
+    end
+
+    if current and current:IsA("Model") then return current end
+    return lastModel
+end
+
+local function isInExcludedContainer(inst)
+    local cur = inst
+    local depth = 0
+    while cur and cur ~= Workspace and depth < 8 do
+        if containsAny(cur.Name, CONFIG.ESP.MapExcludeKeywords) then
+            return true
+        end
+        cur = cur.Parent
+        depth = depth + 1
+    end
+    return false
+end
+
+--=====================================================================
+-- DETECÇÃO DE COMPUTADOR (anti-falso-positivo)
 --=====================================================================
 local function isComputer(inst)
     if not inst or not inst.Parent then return false end
     if inst:IsA("Player") then return false end
+    if inst:IsA("Model") and #inst:GetChildren() > 40 then return false end
 
-    if containsAny(inst.Name, CONFIG.ESP.ComputerNameMatch) then
+    -- 1) Checa tags primeiro (mais confiável)
+    local tags = CollectionService:GetTags(inst)
+
+    -- Tag blacklist descarta imediatamente
+    for _, tag in ipairs(tags) do
+        if containsAny(tag, CONFIG.ESP.ComputerTagBlacklist) then
+            return false
+        end
+    end
+
+    -- Tag whitelist aprova imediatamente
+    for _, tag in ipairs(tags) do
+        if containsAny(tag, CONFIG.ESP.ComputerTagMatch) then
+            return true
+        end
+    end
+
+    -- 2) Blacklist de nome
+    if containsAny(inst.Name, CONFIG.ESP.ComputerBlacklist) then
+        return false
+    end
+
+    -- 3) Whitelist FORTE
+    if containsAny(inst.Name, CONFIG.ESP.ComputerStrongMatch) then
         return true
     end
 
-    for _, tag in ipairs(CollectionService:GetTags(inst)) do
-        if containsAny(tag, CONFIG.ESP.ComputerTagMatch) then
+    -- 4) Whitelist FRACA (só modo aberto)
+    if not CONFIG.ESP.ComputerStrictMode then
+        if containsAny(inst.Name, CONFIG.ESP.ComputerWeakMatch) then
+            if inst.Parent and containsAny(inst.Parent.Name, CONFIG.ESP.ComputerBlacklist) then
+                return false
+            end
             return true
         end
     end
@@ -210,10 +313,6 @@ for _, plr in ipairs(Players:GetPlayers()) do
         if hl then hl:Destroy() end
     end
 end
-for _, inst in ipairs(Workspace:GetDescendants()) do
-    local hl = inst:FindFirstChild("MonoESP_Obj_HL")
-    if hl then hl:Destroy() end
-end
 
 --=====================================================================
 -- GUI PRINCIPAL
@@ -228,8 +327,8 @@ local ScreenGui = create("ScreenGui", {
 
 local Main = create("Frame", {
     Name = "Main",
-    Size = UDim2.new(0, 600, 0, 460),
-    Position = UDim2.new(0.5, -300, 0.5, -230),
+    Size = UDim2.new(0, 600, 0, 500),
+    Position = UDim2.new(0.5, -300, 0.5, -250),
     BackgroundColor3 = PALETTE.Bg0,
     BackgroundTransparency = 0.05,
     BorderSizePixel = 0,
@@ -362,7 +461,7 @@ local Content = create("Frame", {
 })
 
 local minimized = false
-local fullSize = UDim2.new(0, 600, 0, 460)
+local fullSize = UDim2.new(0, 600, 0, 500)
 local miniSize = UDim2.new(0, 600, 0, 48)
 
 MinBtn.MouseButton1Click:Connect(function()
@@ -374,7 +473,7 @@ end)
 
 RestBtn.MouseButton1Click:Connect(function()
     if not minimized then
-        tween(Main, 0.35, { Position = UDim2.new(0.5, -300, 0.5, -230) }, Enum.EasingStyle.Quint)
+        tween(Main, 0.35, { Position = UDim2.new(0.5, -300, 0.5, -250) }, Enum.EasingStyle.Quint)
         return
     end
     minimized = false
@@ -477,7 +576,6 @@ local function makeSection(parent, title, yOffset, height)
     return section
 end
 
--- TOGGLE
 local function makeToggle(parent, label, yPos, initial, callback)
     local row = create("Frame", {
         Size = UDim2.new(1, -20, 0, 28),
@@ -529,7 +627,6 @@ local function makeToggle(parent, label, yPos, initial, callback)
     return { set = set, get = function() return state end }
 end
 
--- SLIDER
 local function makeSlider(parent, label, yPos, initial, minV, maxV, callback)
     local wrap = create("Frame", {
         Size = UDim2.new(1, -20, 0, 42),
@@ -627,7 +724,6 @@ local function makeSlider(parent, label, yPos, initial, minV, maxV, callback)
     }
 end
 
--- TEXTBOX
 local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply)
     local wrap = create("Frame", {
         Size = UDim2.new(1, -20, 0, 52),
@@ -717,7 +813,10 @@ end
 -- FORWARD DECLARATIONS
 --=====================================================================
 local tracked = {}
-local trackedObjects = {}  -- [Instance] = { hl, box, boxStroke, name, dist }
+local trackedObjects = {}
+local activeMapRoot = nil
+local lastMapRoot = nil
+local currentMapScanCount = 0
 local updateESPStyles
 local updateStatusPill
 local updateSpeed
@@ -830,11 +929,11 @@ create("TextLabel", {
 --=====================================================================
 -- COLUNA 3 — COMPUTADORES + CORES
 --=====================================================================
-local CompPanel = makeSection(Col3, "ESP  •  COMPUTADORES", 0, 160)
+local CompPanel = makeSection(Col3, "ESP  •  COMPUTADORES", 0, 260)
 
 makeToggle(CompPanel, "Ativar ESP Computadores", 36, CONFIG.ESP.ShowComputers, function(v)
     CONFIG.ESP.ShowComputers = v
-    -- esconde tudo se off
+    updateStatusPill()
     if not v then
         for _, data in pairs(trackedObjects) do
             if data.hl then data.hl.Enabled = false end
@@ -846,10 +945,57 @@ makeToggle(CompPanel, "Ativar ESP Computadores", 36, CONFIG.ESP.ShowComputers, f
 end)
 makeToggle(CompPanel, "Contorno",  72,  CONFIG.ESP.ComputerHighlight, function(v) CONFIG.ESP.ComputerHighlight = v end)
 makeToggle(CompPanel, "Caixa",     104, CONFIG.ESP.ComputerBox,       function(v) CONFIG.ESP.ComputerBox = v end)
-makeToggle(CompPanel, "Nome/Dist", 136, CONFIG.ESP.ComputerName,      function(v) CONFIG.ESP.ComputerName = v; CONFIG.ESP.ComputerDistance = v end)
+makeToggle(CompPanel, "Nome",      136, CONFIG.ESP.ComputerName,      function(v) CONFIG.ESP.ComputerName = v end)
+makeToggle(CompPanel, "Distância", 168, CONFIG.ESP.ComputerDistance,  function(v) CONFIG.ESP.ComputerDistance = v end)
 
--- Painel de cores
-local ColorPanel = makeSection(Col3, "CORES  •  ESP", 170, 90)
+local strictModeBtn = create("TextButton", {
+    Size = UDim2.new(1, -20, 0, 26),
+    Position = UDim2.new(0, 10, 0, 200),
+    BackgroundColor3 = PALETTE.Bg2,
+    BackgroundTransparency = 0.1,
+    BorderSizePixel = 0,
+    Text = "MODO:  ESTRITO (recomendado)",
+    TextColor3 = PALETTE.Text,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    AutoButtonColor = false,
+    Parent = CompPanel,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = strictModeBtn })
+local strictStroke = create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.5, Parent = strictModeBtn })
+
+strictModeBtn.MouseButton1Click:Connect(function()
+    CONFIG.ESP.ComputerStrictMode = not CONFIG.ESP.ComputerStrictMode
+    if CONFIG.ESP.ComputerStrictMode then
+        strictModeBtn.Text = "MODO:  ESTRITO (recomendado)"
+    else
+        strictModeBtn.Text = "MODO:  ABERTO (pega mais)"
+    end
+    lastMapRoot = nil
+end)
+strictModeBtn.MouseEnter:Connect(function()
+    tween(strictModeBtn, 0.15, { BackgroundColor3 = PALETTE.Bg2, BackgroundTransparency = 0 })
+    tween(strictStroke, 0.15, { Transparency = 0.2 })
+end)
+strictModeBtn.MouseLeave:Connect(function()
+    tween(strictModeBtn, 0.15, { BackgroundColor3 = PALETTE.Bg2, BackgroundTransparency = 0.1 })
+    tween(strictStroke, 0.15, { Transparency = 0.5 })
+end)
+
+create("TextLabel", {
+    Size = UDim2.new(1, -20, 0, 30),
+    Position = UDim2.new(0, 10, 0, 228),
+    BackgroundTransparency = 1,
+    Text = "Ajuste a lista no topo do script\npara o seu jogo.",
+    TextColor3 = PALETTE.TextMute,
+    TextSize = 9,
+    Font = Enum.Font.GothamMedium,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    Parent = CompPanel,
+})
+
+local ColorPanel = makeSection(Col3, "CORES  •  ESP", 270, 90)
 
 local function makeColorBadge(parent, y, color, labelText)
     local row = create("Frame", {
@@ -888,12 +1034,12 @@ makeColorBadge(ColorPanel, 80, ESP_COLORS.Computer, "Computador — Amarelo")
 -- STATUS PILL
 --=====================================================================
 function updateStatusPill()
-    local any = CONFIG.ESP.Enabled or CONFIG.Speed.Enabled or CONFIG.ESP.ShowComputers
     local parts = {}
     if CONFIG.ESP.Enabled then table.insert(parts, "PLR") end
     if CONFIG.ESP.ShowComputers then table.insert(parts, "PC") end
     if CONFIG.Speed.Enabled then table.insert(parts, "SPD") end
-    local label = #parts > 0 and table.concat(parts, " • ") or "OFF"
+    local any = #parts > 0
+    local label = any and table.concat(parts, " • ") or "OFF"
 
     StatusText.Text = label
     tween(StatusDot, 0.25, { BackgroundColor3 = any and PALETTE.White or PALETTE.AccentOff })
@@ -966,91 +1112,60 @@ local function buildESP(plr)
     hl.Parent = char
 
     local box = create("Frame", {
-        Name = "MonoESP_Box",
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        Visible = false,
-        Parent = ESPOverlay,
+        BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, Parent = ESPOverlay,
     })
     local boxStroke = create("UIStroke", {
-        Color = color,
-        Thickness = CONFIG.ESP.Thickness,
-        Transparency = CONFIG.ESP.Transparency,
-        Parent = box,
+        Color = color, Thickness = CONFIG.ESP.Thickness,
+        Transparency = CONFIG.ESP.Transparency, Parent = box,
     })
 
     local corners = {}
     for i = 1, 4 do
-        local c = create("Frame", {
+        corners[i] = create("Frame", {
             BackgroundColor3 = color,
             BackgroundTransparency = CONFIG.ESP.Transparency,
-            BorderSizePixel = 0,
-            Visible = false,
-            Parent = ESPOverlay,
+            BorderSizePixel = 0, Visible = false, Parent = ESPOverlay,
         })
-        corners[i] = c
     end
 
     local nameLbl = create("TextLabel", {
-        BackgroundTransparency = 1,
-        Text = plr.Name,
-        TextColor3 = color,
-        TextTransparency = CONFIG.ESP.Transparency,
-        TextSize = 12,
-        Font = Enum.Font.GothamBold,
-        TextStrokeTransparency = 0.4,
+        BackgroundTransparency = 1, Text = plr.Name, TextColor3 = color,
+        TextTransparency = CONFIG.ESP.Transparency, TextSize = 12,
+        Font = Enum.Font.GothamBold, TextStrokeTransparency = 0.4,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
         Size = UDim2.new(0, 160, 0, 14),
-        AnchorPoint = Vector2.new(0.5, 1),
-        Visible = false,
-        Parent = ESPOverlay,
+        AnchorPoint = Vector2.new(0.5, 1), Visible = false, Parent = ESPOverlay,
     })
 
     local roleLbl = create("TextLabel", {
-        BackgroundTransparency = 1,
-        Text = getRoleLabel(plr),
-        TextColor3 = color,
-        TextTransparency = math.min(1, CONFIG.ESP.Transparency + 0.15),
-        TextSize = 10,
-        Font = Enum.Font.GothamBold,
-        TextStrokeTransparency = 0.5,
+        BackgroundTransparency = 1, Text = getRoleLabel(plr), TextColor3 = color,
+        TextTransparency = math.min(1, CONFIG.ESP.Transparency + 0.15), TextSize = 10,
+        Font = Enum.Font.GothamBold, TextStrokeTransparency = 0.5,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
         Size = UDim2.new(0, 160, 0, 12),
-        AnchorPoint = Vector2.new(0.5, 0),
-        Visible = false,
-        Parent = ESPOverlay,
+        AnchorPoint = Vector2.new(0.5, 0), Visible = false, Parent = ESPOverlay,
     })
 
     local distLbl = create("TextLabel", {
-        BackgroundTransparency = 1,
-        Text = "0m",
-        TextColor3 = color,
-        TextTransparency = CONFIG.ESP.Transparency,
-        TextSize = 11,
-        Font = Enum.Font.GothamMedium,
-        TextStrokeTransparency = 0.4,
+        BackgroundTransparency = 1, Text = "0m", TextColor3 = color,
+        TextTransparency = CONFIG.ESP.Transparency, TextSize = 11,
+        Font = Enum.Font.GothamMedium, TextStrokeTransparency = 0.4,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
         Size = UDim2.new(0, 100, 0, 12),
-        AnchorPoint = Vector2.new(0.5, 0),
-        Visible = false,
-        Parent = ESPOverlay,
+        AnchorPoint = Vector2.new(0.5, 0), Visible = false, Parent = ESPOverlay,
     })
 
     local hpBg = create("Frame", {
         BackgroundColor3 = Color3.fromRGB(20, 20, 22),
-        BackgroundTransparency = 0.35,
-        BorderSizePixel = 0,
-        Visible = false,
-        Parent = ESPOverlay,
+        BackgroundTransparency = 0.35, BorderSizePixel = 0,
+        Visible = false, Parent = ESPOverlay,
     })
     create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = hpBg })
 
     local hpFg = create("Frame", {
         BackgroundColor3 = color,
         BackgroundTransparency = CONFIG.ESP.Transparency,
-        BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 1, 0),
-        Parent = hpBg,
+        BorderSizePixel = 0, Size = UDim2.new(1, 0, 1, 0), Parent = hpBg,
     })
     create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = hpFg })
 
@@ -1078,7 +1193,6 @@ local function buildObjESP(inst)
 
     local color = ESP_COLORS.Computer
 
-    -- Highlight
     local hl = Instance.new("Highlight")
     hl.Name = "MonoESP_Obj_HL"
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -1090,46 +1204,30 @@ local function buildObjESP(inst)
     hl.Parent = inst
 
     local box = create("Frame", {
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        Visible = false,
-        Parent = ESPOverlay,
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Visible = false, Parent = ESPOverlay,
     })
     local boxStroke = create("UIStroke", {
-        Color = color,
-        Thickness = CONFIG.ESP.Thickness,
-        Transparency = CONFIG.ESP.Transparency,
-        Parent = box,
+        Color = color, Thickness = CONFIG.ESP.Thickness,
+        Transparency = CONFIG.ESP.Transparency, Parent = box,
     })
 
     local nameLbl = create("TextLabel", {
-        BackgroundTransparency = 1,
-        Text = "◆ PC",
-        TextColor3 = color,
-        TextTransparency = CONFIG.ESP.Transparency,
-        TextSize = 12,
-        Font = Enum.Font.GothamBold,
-        TextStrokeTransparency = 0.4,
+        BackgroundTransparency = 1, Text = "◆ PC", TextColor3 = color,
+        TextTransparency = CONFIG.ESP.Transparency, TextSize = 12,
+        Font = Enum.Font.GothamBold, TextStrokeTransparency = 0.4,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-        Size = UDim2.new(0, 100, 0, 14),
-        AnchorPoint = Vector2.new(0.5, 1),
-        Visible = false,
-        Parent = ESPOverlay,
+        Size = UDim2.new(0, 120, 0, 14),
+        AnchorPoint = Vector2.new(0.5, 1), Visible = false, Parent = ESPOverlay,
     })
 
     local distLbl = create("TextLabel", {
-        BackgroundTransparency = 1,
-        Text = "0m",
-        TextColor3 = color,
-        TextTransparency = CONFIG.ESP.Transparency,
-        TextSize = 11,
-        Font = Enum.Font.GothamMedium,
-        TextStrokeTransparency = 0.4,
+        BackgroundTransparency = 1, Text = "0m", TextColor3 = color,
+        TextTransparency = CONFIG.ESP.Transparency, TextSize = 11,
+        Font = Enum.Font.GothamMedium, TextStrokeTransparency = 0.4,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
         Size = UDim2.new(0, 80, 0, 12),
-        AnchorPoint = Vector2.new(0.5, 0),
-        Visible = false,
-        Parent = ESPOverlay,
+        AnchorPoint = Vector2.new(0.5, 0), Visible = false, Parent = ESPOverlay,
     })
 
     trackedObjects[inst] = {
@@ -1139,14 +1237,13 @@ local function buildObjESP(inst)
 end
 
 --=====================================================================
--- UPDATE DE ESTILO (cores/espessura/transparência)
+-- UPDATE ESTILO
 --=====================================================================
 function updateESPStyles()
     for plr, data in pairs(tracked) do
         local color = getESPColor(plr)
         if data.hl then
-            data.hl.FillColor = color
-            data.hl.OutlineColor = color
+            data.hl.FillColor = color; data.hl.OutlineColor = color
             data.hl.OutlineTransparency = CONFIG.ESP.Transparency
             data.hl.Enabled = CONFIG.ESP.Enabled and CONFIG.ESP.ShowHighlight
         end
@@ -1166,7 +1263,6 @@ function updateESPStyles()
             end
         end
     end
-
     for _, data in pairs(trackedObjects) do
         if data.boxStroke then
             data.boxStroke.Color = ESP_COLORS.Computer
@@ -1184,14 +1280,34 @@ function updateESPStyles()
 end
 
 --=====================================================================
--- RASTREIO DE COMPUTADORES
+-- SCAN INTELIGENTE (SÓ MAPA ATIVO)
 --=====================================================================
-local function scanComputers()
+local function scanActiveMapComputers()
     if not CONFIG.ESP.ShowComputers then return end
-    for _, inst in ipairs(Workspace:GetDescendants()) do
+
+    local mapRoot = getActiveMapRoot()
+    activeMapRoot = mapRoot
+
+    local mapChanged = (mapRoot ~= lastMapRoot)
+    if not mapChanged then return end
+
+    lastMapRoot = mapRoot
+    currentMapScanCount = 0
+
+    -- Limpa rastreio antigo
+    for inst in pairs(trackedObjects) do
+        destroyObjESP(inst)
+    end
+
+    local scanRoot = mapRoot or Workspace
+
+    for _, inst in ipairs(scanRoot:GetDescendants()) do
+        if currentMapScanCount >= CONFIG.ESP.ComputerMaxCount then break end
+        if isInExcludedContainer(inst) then continue end
         if isComputer(inst) then
             if not trackedObjects[inst] then
                 buildObjESP(inst)
+                currentMapScanCount = currentMapScanCount + 1
             end
         end
     end
@@ -1216,17 +1332,24 @@ Players.PlayerRemoving:Connect(destroyESP)
 -- LOOP PRINCIPAL
 --=====================================================================
 local scanTimer = 0
+local pcRenderFrame = 0
+
 RunService.RenderStepped:Connect(function(dt)
-    -- Rescan de computadores a cada 1 segundo
+    -- Rescan do mapa ativo
     scanTimer = scanTimer + dt
-    if scanTimer >= 1 then
+    if scanTimer >= CONFIG.ESP.ComputerRescanRate then
         scanTimer = 0
-        scanComputers()
+        scanActiveMapComputers()
+    end
+
+    local currentRoot = getActiveMapRoot()
+    if currentRoot ~= lastMapRoot then
+        scanActiveMapComputers()
     end
 
     local myPos = Camera.CFrame.Position
 
-    -- ====== JOGADORES ======
+    -- JOGADORES
     if CONFIG.ESP.Enabled then
         for plr, data in pairs(tracked) do
             local char = plr.Character
@@ -1254,10 +1377,7 @@ RunService.RenderStepped:Connect(function(dt)
                 continue
             end
 
-            -- Highlight (ligado por config)
-            if data.hl then
-                data.hl.Enabled = CONFIG.ESP.ShowHighlight
-            end
+            if data.hl then data.hl.Enabled = CONFIG.ESP.ShowHighlight end
 
             local headPos, onHead = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
             local footPos, onFoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
@@ -1340,7 +1460,6 @@ RunService.RenderStepped:Connect(function(dt)
             end
         end
     else
-        -- esconde todos
         for _, data in pairs(tracked) do
             if data.hl then data.hl.Enabled = false end
             if data.box then data.box.Visible = false end
@@ -1352,89 +1471,92 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- ====== COMPUTADORES ======
-    if CONFIG.ESP.ShowComputers then
-        for inst, data in pairs(trackedObjects) do
-            if not inst.Parent then destroyObjESP(inst); continue end
+    -- COMPUTADORES (a cada 2 frames)
+    pcRenderFrame = pcRenderFrame + 1
+    if pcRenderFrame >= 2 then
+        pcRenderFrame = 0
 
-            local pos = inst:IsA("BasePart") and inst.Position or nil
-            if not pos then
-                local pp = inst:FindFirstChildWhichIsA("BasePart", true)
-                if pp then pos = pp.Position end
+        if CONFIG.ESP.ShowComputers then
+            for inst, data in pairs(trackedObjects) do
+                if not inst.Parent then destroyObjESP(inst); continue end
+
+                local pos = inst:IsA("BasePart") and inst.Position or nil
+                if not pos then
+                    local pp = inst:FindFirstChildWhichIsA("BasePart", true)
+                    if pp then pos = pp.Position end
+                end
+                if not pos and inst:IsA("Model") then
+                    pos = inst:GetPivot().Position
+                end
+
+                if not pos then
+                    if data.box then data.box.Visible = false end
+                    if data.name then data.name.Visible = false end
+                    if data.dist then data.dist.Visible = false end
+                    if data.hl then data.hl.Enabled = false end
+                    continue
+                end
+
+                local dist = (pos - myPos).Magnitude
+                if dist > CONFIG.ESP.ComputerMaxDistance then
+                    if data.box then data.box.Visible = false end
+                    if data.name then data.name.Visible = false end
+                    if data.dist then data.dist.Visible = false end
+                    if data.hl then data.hl.Enabled = false end
+                    continue
+                end
+
+                local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
+                if not onScreen then
+                    if data.box then data.box.Visible = false end
+                    if data.name then data.name.Visible = false end
+                    if data.dist then data.dist.Visible = false end
+                    if data.hl then data.hl.Enabled = false end
+                    continue
+                end
+
+                if data.hl then data.hl.Enabled = CONFIG.ESP.ComputerHighlight end
+
+                if CONFIG.ESP.ComputerBox then
+                    local size = math.clamp(3000 / math.max(dist, 1), 14, 60)
+                    data.box.Visible = true
+                    data.box.Position = UDim2.new(0, screenPos.X - size/2, 0, screenPos.Y - size/2)
+                    data.box.Size = UDim2.new(0, size, 0, size)
+                    data.boxStroke.Enabled = true
+                else
+                    data.box.Visible = false
+                    data.boxStroke.Enabled = false
+                end
+
+                if CONFIG.ESP.ComputerName then
+                    data.name.Visible = true
+                    data.name.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 22)
+                    data.name.Text = "◆ " .. inst.Name
+                else
+                    data.name.Visible = false
+                end
+
+                if CONFIG.ESP.ComputerDistance then
+                    data.dist.Visible = true
+                    data.dist.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y + 18)
+                    data.dist.Text = string.format("%dm", math.floor(dist))
+                else
+                    data.dist.Visible = false
+                end
             end
-
-            if not pos then
+        else
+            for _, data in pairs(trackedObjects) do
+                if data.hl then data.hl.Enabled = false end
                 if data.box then data.box.Visible = false end
                 if data.name then data.name.Visible = false end
                 if data.dist then data.dist.Visible = false end
-                if data.hl then data.hl.Enabled = false end
-                continue
             end
-
-            local dist = (pos - myPos).Magnitude
-            if dist > CONFIG.ESP.ComputerMaxDistance then
-                if data.box then data.box.Visible = false end
-                if data.name then data.name.Visible = false end
-                if data.dist then data.dist.Visible = false end
-                if data.hl then data.hl.Enabled = false end
-                continue
-            end
-
-            local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
-            if not onScreen then
-                if data.box then data.box.Visible = false end
-                if data.name then data.name.Visible = false end
-                if data.dist then data.dist.Visible = false end
-                if data.hl then data.hl.Enabled = false end
-                continue
-            end
-
-            -- Highlight
-            if data.hl then
-                data.hl.Enabled = CONFIG.ESP.ComputerHighlight
-            end
-
-            -- Caixa (tamanho fixo baseado em distância)
-            if CONFIG.ESP.ComputerBox then
-                local size = math.clamp(3000 / math.max(dist, 1), 14, 60)
-                data.box.Visible = true
-                data.box.Position = UDim2.new(0, screenPos.X - size/2, 0, screenPos.Y - size/2)
-                data.box.Size = UDim2.new(0, size, 0, size)
-                data.boxStroke.Enabled = true
-            else
-                data.box.Visible = false
-                data.boxStroke.Enabled = false
-            end
-
-            -- Nome + Distância
-            if CONFIG.ESP.ComputerName then
-                data.name.Visible = true
-                data.name.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 22)
-                data.name.Text = "◆ " .. inst.Name
-            else
-                data.name.Visible = false
-            end
-
-            if CONFIG.ESP.ComputerDistance then
-                data.dist.Visible = true
-                data.dist.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y + 18)
-                data.dist.Text = string.format("%dm", math.floor(dist))
-            else
-                data.dist.Visible = false
-            end
-        end
-    else
-        for _, data in pairs(trackedObjects) do
-            if data.hl then data.hl.Enabled = false end
-            if data.box then data.box.Visible = false end
-            if data.name then data.name.Visible = false end
-            if data.dist then data.dist.Visible = false end
         end
     end
 end)
 
 --=====================================================================
--- GARANTIR BUILD QUANDO ATIVADO
+-- GARANTIR BUILD
 --=====================================================================
 RunService.Heartbeat:Connect(function()
     if CONFIG.ESP.Enabled then
@@ -1443,13 +1565,6 @@ RunService.Heartbeat:Connect(function()
                 if not tracked[plr] or not tracked[plr].hl or tracked[plr].hl.Parent ~= plr.Character then
                     buildESP(plr)
                 end
-            end
-        end
-    end
-    if CONFIG.ESP.ShowComputers then
-        for inst, data in pairs(trackedObjects) do
-            if not inst.Parent then
-                destroyObjESP(inst)
             end
         end
     end
@@ -1470,8 +1585,9 @@ end)
 --=====================================================================
 -- BOOT
 --=====================================================================
-scanComputers()
+task.wait(0.5)
+scanActiveMapComputers()
 updateStatusPill()
 updateSpeed()
 
-print("[MonoChrome Test Suite] Carregado. UIParent:", UIParent:GetFullName())
+print("[MonoChrome Test Suite] Carregado. Mapa ativo:", activeMapRoot and activeMapRoot.Name or "n/a")
