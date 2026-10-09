@@ -1,7 +1,7 @@
 --=====================================================================
--- MONOCHROME TEST SUITE  •  ESP + SPEED  •  Versão Final v4
+-- MONOCHROME TEST SUITE  •  v5
 -- Menu P&B • ESP: verde=aliado, vermelho=fera, amarelo=PCs, ciano=jaulas
--- Velocidade 0-35 • Filtro anti-lag + anti-falso-positivo
+-- Velocidade 0-35 (somente TextBox) • Idiomas: PT-BR / EN
 --=====================================================================
 
 --// SERVIÇOS
@@ -46,20 +46,122 @@ local PALETTE = {
 -- CORES DO ESP
 --=====================================================================
 local ESP_COLORS = {
-    Ally     = Color3.fromRGB(80, 220, 120),     -- verde
-    Beast    = Color3.fromRGB(230, 60, 60),      -- vermelho
-    Computer = Color3.fromRGB(255, 210, 60),     -- amarelo
-    Cage     = Color3.fromRGB(90, 220, 255),     -- ciano (jaulas de gelo)
+    Ally     = Color3.fromRGB(80, 220, 120),
+    Beast    = Color3.fromRGB(230, 60, 60),
+    Computer = Color3.fromRGB(255, 210, 60),
+    Cage     = Color3.fromRGB(90, 220, 255),
 }
+
+--=====================================================================
+-- IDIOMAS
+--=====================================================================
+local LANG = "pt"  -- "pt" ou "en"
+
+local STRINGS = {
+    pt = {
+        title          = "MONOCHROME  •  5v1  •  TEST SUITE  v5",
+        statusOff      = "OFF",
+        langBtn        = "PT",
+        -- Seções
+        secPlayers     = "ESP  •  JOGADORES",
+        secSpeed       = "VELOCIDADE  (0 - 35)",
+        secComputers   = "ESP  •  COMPUTADORES",
+        secCages       = "ESP  •  JAULAS DE GELO",
+        secColors      = "CORES  •  ESP",
+        -- Toggles gerais
+        enableESP      = "Ativar ESP",
+        enableSpeed    = "Ativar Modificador",
+        enableComp     = "Ativar ESP Computadores",
+        enableCage     = "Ativar ESP Jaulas",
+        -- ESP jogadores
+        highlight      = "Contorno (Highlight)",
+        box            = "Caixa",
+        nameRole       = "Nome + Papel",
+        distance       = "Distância",
+        healthBar      = "Barra de Vida",
+        boxModeFull    = "MODO:  CAIXA COMPLETA",
+        boxModeCorner  = "MODO:  CANTOS",
+        -- Speed
+        speedInput     = "Valor exato (0 - 35)",
+        apply          = "APLICAR",
+        shortcuts      = "Atalhos:\n  RCtrl  →  ESP\n  RShift  →  Speed",
+        -- Computers
+        strictMode     = "MODO:  ESTRITO (recomendado)",
+        openMode       = "MODO:  ABERTO (pega mais)",
+        compNote       = "Ajuste a lista no topo do script\npara o seu jogo.",
+        -- Cages
+        cageNote       = "Detecta jaulas por nome/tag:\n'cage', 'jaula', 'freeze', 'ice'...",
+        -- Colors
+        colorAlly      = "Aliado — Verde",
+        colorBeast     = "Fera — Vermelho",
+        colorComp      = "Computador — Amarelo",
+        colorCage      = "Jaula de Gelo — Ciano",
+        -- Rótulos
+        beast          = "FERA",
+        survivor       = "SOBREVIVENTE",
+        cageShort      = "❄ JAULA",
+        pcShort        = "◆ PC",
+        invalid        = "Inválido",
+        -- Status pill
+        spPlayer       = "PLR",
+        spComputer     = "PC",
+        spCage         = "JAULA",
+        spSpeed        = "VEL",
+    },
+    en = {
+        title          = "MONOCHROME  •  5v1  •  TEST SUITE  v5",
+        statusOff      = "OFF",
+        langBtn        = "EN",
+        secPlayers     = "ESP  •  PLAYERS",
+        secSpeed       = "SPEED  (0 - 35)",
+        secComputers   = "ESP  •  COMPUTERS",
+        secCages       = "ESP  •  ICE CAGES",
+        secColors      = "COLORS  •  ESP",
+        enableESP      = "Enable ESP",
+        enableSpeed    = "Enable Modifier",
+        enableComp     = "Enable Computer ESP",
+        enableCage     = "Enable Cage ESP",
+        highlight      = "Highlight",
+        box            = "Box",
+        nameRole       = "Name + Role",
+        distance       = "Distance",
+        healthBar      = "Health Bar",
+        boxModeFull    = "MODE:  FULL BOX",
+        boxModeCorner  = "MODE:  CORNERS",
+        speedInput     = "Exact value (0 - 35)",
+        apply          = "APPLY",
+        shortcuts      = "Shortcuts:\n  RCtrl  →  ESP\n  RShift  →  Speed",
+        strictMode     = "MODE:  STRICT (recommended)",
+        openMode       = "MODE:  OPEN (catches more)",
+        compNote       = "Edit the list at the top of the script\nfor your game.",
+        cageNote       = "Detects cages by name/tag:\n'cage', 'freeze', 'ice'...",
+        colorAlly      = "Ally — Green",
+        colorBeast     = "Beast — Red",
+        colorComp      = "Computer — Yellow",
+        colorCage      = "Ice Cage — Cyan",
+        beast          = "BEAST",
+        survivor       = "SURVIVOR",
+        cageShort      = "❄ CAGE",
+        pcShort        = "◆ PC",
+        invalid        = "Invalid",
+        spPlayer       = "PLR",
+        spComputer     = "PC",
+        spCage         = "CAGE",
+        spSpeed        = "SPD",
+    },
+}
+
+local function T(key)
+    local pack = STRINGS[LANG] or STRINGS.pt
+    return pack[key] or key
+end
 
 --=====================================================================
 -- CONFIG
 --=====================================================================
 local CONFIG = {
     ESP = {
-        -- Jogadores
         Enabled       = false,
-        ShowPlayers   = true,
         ShowBox       = true,
         ShowName      = true,
         ShowDistance  = true,
@@ -70,7 +172,6 @@ local CONFIG = {
         Thickness     = 1.5,
         MaxDistance   = 500,
 
-        -- Computadores
         ShowComputers       = true,
         ComputerBox         = true,
         ComputerName        = true,
@@ -81,7 +182,6 @@ local CONFIG = {
         ComputerMaxCount    = 30,
         ComputerStrictMode  = true,
 
-        -- Jaulas de Gelo
         ShowCages           = true,
         CageBox             = true,
         CageName            = true,
@@ -90,12 +190,10 @@ local CONFIG = {
         CageMaxDistance     = 400,
         CageMaxCount        = 20,
 
-        -- Detecção da Fera
         BeastNameMatch = { "beast", "fera", "monster", "monstro", "killer" },
         BeastTeamMatch = { "beast", "fera", "monster", "monstro", "killer" },
         BeastAttribute = "IsBeast",
 
-        -- ===== DETECÇÃO DE COMPUTADORES =====
         ComputerStrongMatch = {
             "objectivecomputer", "objective_computer", "objective computer",
             "hackable", "hackablecomputer", "hackable_computer",
@@ -134,13 +232,12 @@ local CONFIG = {
             "furniture", "sign", "billboard", "background", "prop",
         },
 
-        -- ===== DETECÇÃO DE JAULAS DE GELO =====
         CageStrongMatch = {
             "freezecage", "freeze_cage", "icecage", "ice_cage",
             "frozencage", "frozen_cage", "frozen", "freeze",
             "jaula", "jaulagelo", "jaula_gelo", "jauladegelo",
             "gelo", "ice", "cage", "prison", "prisao", "prisão",
-            "cell", "cela", "cubicle", "cubículo", "cubicle",
+            "cell", "cela",
         },
         CageWeakMatch = {
             "iceblock", "ice_block", "icecube", "ice_cube",
@@ -160,7 +257,6 @@ local CONFIG = {
             "decor", "decoration", "background", "prop",
         },
 
-        -- Containers que NÃO devem ser escaneados
         MapExcludeKeywords = {
             "workspace_storage", "storage", "cache", "template",
             "mapstorage", "unused", "backup", "preload",
@@ -170,7 +266,7 @@ local CONFIG = {
         Enabled = false,
         Value   = 16,
         Min     = 0,
-        Max     = 35,       -- AUMENTADO: era 22, agora 35
+        Max     = 35,
         Default = 16,
     },
     Keybind = {
@@ -211,7 +307,7 @@ local function containsAny(str, list)
 end
 
 --=====================================================================
--- DETECÇÃO DA FERA
+-- DETECÇÃO DA FERA / CORES / RÓTULOS
 --=====================================================================
 local function isBeast(plr)
     if plr:GetAttribute(CONFIG.ESP.BeastAttribute) == true then return true end
@@ -224,17 +320,13 @@ local function isBeast(plr)
             if containsAny(tag, CONFIG.ESP.BeastNameMatch) then return true end
         end
     end
-
     for _, tag in ipairs(CollectionService:GetTags(plr)) do
         if containsAny(tag, CONFIG.ESP.BeastNameMatch) then return true end
     end
-
     if containsAny(plr.Name, CONFIG.ESP.BeastNameMatch) then return true end
-
     if plr.Team and containsAny(plr.Team.Name, CONFIG.ESP.BeastTeamMatch) then
         return true
     end
-
     return false
 end
 
@@ -244,8 +336,8 @@ local function getESPColor(plr)
 end
 
 local function getRoleLabel(plr)
-    if isBeast(plr) then return "BEAST" end
-    return "SURVIVOR"
+    if isBeast(plr) then return T("beast") end
+    return T("survivor")
 end
 
 --=====================================================================
@@ -254,14 +346,12 @@ end
 local function getActiveMapRoot()
     local char = LocalPlayer.Character
     if not char then return nil end
-
     local current = char
     local lastModel = nil
     while current and current.Parent and current.Parent ~= Workspace do
         if current:IsA("Model") then lastModel = current end
         current = current.Parent
     end
-
     if current and current:IsA("Model") then return current end
     return lastModel
 end
@@ -288,7 +378,6 @@ local function isComputer(inst)
     if inst:IsA("Model") and #inst:GetChildren() > 40 then return false end
 
     local tags = CollectionService:GetTags(inst)
-
     for _, tag in ipairs(tags) do
         if containsAny(tag, CONFIG.ESP.ComputerTagBlacklist) then return false end
     end
@@ -307,12 +396,11 @@ local function isComputer(inst)
             return true
         end
     end
-
     return false
 end
 
 --=====================================================================
--- DETECÇÃO DE JAULA DE GELO
+-- DETECÇÃO DE JAULA
 --=====================================================================
 local function isCage(inst)
     if not inst or not inst.Parent then return false end
@@ -320,7 +408,6 @@ local function isCage(inst)
     if inst:IsA("Model") and #inst:GetChildren() > 40 then return false end
 
     local tags = CollectionService:GetTags(inst)
-
     for _, tag in ipairs(tags) do
         if containsAny(tag, CONFIG.ESP.CageTagBlacklist) then return false end
     end
@@ -330,12 +417,7 @@ local function isCage(inst)
 
     if containsAny(inst.Name, CONFIG.ESP.CageBlacklist) then return false end
     if containsAny(inst.Name, CONFIG.ESP.CageStrongMatch) then return true end
-
-    -- Jaulas fracas só pegam se realmente parecer gelo
-    if containsAny(inst.Name, CONFIG.ESP.CageWeakMatch) then
-        return true
-    end
-
+    if containsAny(inst.Name, CONFIG.ESP.CageWeakMatch) then return true end
     return false
 end
 
@@ -412,11 +494,12 @@ create("TextLabel", {
     Font = Enum.Font.GothamBold,
     Parent = TopBar,
 })
-create("TextLabel", {
+
+local TitleLabel = create("TextLabel", {
     Size = UDim2.new(0, 340, 1, 0),
     Position = UDim2.new(0, 52, 0, 0),
     BackgroundTransparency = 1,
-    Text = "MONOCHROME  •  5v1  •  TEST SUITE  v4",
+    Text = T("title"),
     TextColor3 = PALETTE.Text,
     TextSize = 12,
     Font = Enum.Font.GothamBold,
@@ -424,6 +507,32 @@ create("TextLabel", {
     Parent = TopBar,
 })
 
+-- Botão de idioma
+local LangBtn = create("TextButton", {
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(1, -350, 0.5, -11),
+    BackgroundColor3 = PALETTE.Bg2,
+    BackgroundTransparency = 0.2,
+    BorderSizePixel = 0,
+    Text = T("langBtn"),
+    TextColor3 = PALETTE.Text,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    AutoButtonColor = false,
+    Parent = TopBar,
+})
+create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = LangBtn })
+local langStroke = create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.4, Parent = LangBtn })
+LangBtn.MouseEnter:Connect(function()
+    tween(LangBtn, 0.15, { BackgroundTransparency = 0 })
+    tween(langStroke, 0.15, { Transparency = 0.15 })
+end)
+LangBtn.MouseLeave:Connect(function()
+    tween(LangBtn, 0.15, { BackgroundTransparency = 0.2 })
+    tween(langStroke, 0.15, { Transparency = 0.4 })
+end)
+
+-- Status pill
 local StatusPill = create("Frame", {
     Size = UDim2.new(0, 150, 0, 22),
     Position = UDim2.new(1, -300, 0.5, -11),
@@ -446,7 +555,7 @@ local StatusText = create("TextLabel", {
     Size = UDim2.new(1, -22, 1, 0),
     Position = UDim2.new(0, 22, 0, 0),
     BackgroundTransparency = 1,
-    Text = "OFF",
+    Text = T("statusOff"),
     TextColor3 = PALETTE.TextDim,
     TextSize = 10,
     Font = Enum.Font.GothamBold,
@@ -583,7 +692,31 @@ local Col1 = makeColumn(Content, 0,    0,   0.34)
 local Col2 = makeColumn(Content, 0.34, 6,   0.33)
 local Col3 = makeColumn(Content, 0.67, 12,  0.33)
 
-local function makeSection(parent, title, yOffset, height)
+--=====================================================================
+-- REGISTRO DE TEXTOS (para trocar idioma ao vivo)
+--=====================================================================
+local textRegistry = {}    -- lista de { obj, key }
+
+local function registerText(obj, key)
+    table.insert(textRegistry, { obj = obj, key = key })
+    obj.Text = T(key)
+end
+
+local function refreshTexts()
+    for _, entry in ipairs(textRegistry) do
+        if entry.obj and entry.obj.Parent then
+            entry.obj.Text = T(entry.key)
+        end
+    end
+    TitleLabel.Text = T("title")
+    LangBtn.Text = (LANG == "pt") and "PT" or "EN"
+    updateStatusPill()
+end
+
+--=====================================================================
+-- SEÇÃO
+--=====================================================================
+local function makeSection(parent, titleKey, yOffset, height)
     local section = create("Frame", {
         Size = UDim2.new(1, 0, 0, height),
         Position = UDim2.new(0, 0, 0, yOffset),
@@ -596,17 +729,19 @@ local function makeSection(parent, title, yOffset, height)
     create("UIStroke", { Color = PALETTE.LineSoft, Thickness = 1, Transparency = 0.5, Parent = section })
 
     local header = create("Frame", { Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, Parent = section })
-    create("TextLabel", {
+    local titleLbl = create("TextLabel", {
         Size = UDim2.new(1, -20, 1, 0),
         Position = UDim2.new(0, 14, 0, 0),
         BackgroundTransparency = 1,
-        Text = title,
+        Text = T(titleKey),
         TextColor3 = PALETTE.TextDim,
         TextSize = 10,
         Font = Enum.Font.GothamBold,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = header,
     })
+    registerText(titleLbl, titleKey)
+
     create("Frame", {
         Size = UDim2.new(1, -28, 0, 1),
         Position = UDim2.new(0, 14, 1, -1),
@@ -617,7 +752,10 @@ local function makeSection(parent, title, yOffset, height)
     return section
 end
 
-local function makeToggle(parent, label, yPos, initial, callback)
+--=====================================================================
+-- TOGGLE
+--=====================================================================
+local function makeToggle(parent, labelKey, yPos, initial, callback)
     local row = create("Frame", {
         Size = UDim2.new(1, -20, 0, 28),
         Position = UDim2.new(0, 10, 0, yPos),
@@ -627,13 +765,15 @@ local function makeToggle(parent, label, yPos, initial, callback)
     local labelLbl = create("TextLabel", {
         Size = UDim2.new(0.62, 0, 1, 0),
         BackgroundTransparency = 1,
-        Text = label,
+        Text = T(labelKey),
         TextColor3 = initial and PALETTE.Text or PALETTE.TextDim,
         TextSize = 11,
         Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = row,
     })
+    registerText(labelLbl, labelKey)
+
     local track = create("Frame", {
         Size = UDim2.new(0, 38, 0, 20),
         Position = UDim2.new(1, -38, 0.5, -10),
@@ -668,120 +808,28 @@ local function makeToggle(parent, label, yPos, initial, callback)
     return { set = set, get = function() return state end }
 end
 
-local function makeSlider(parent, label, yPos, initial, minV, maxV, callback)
-    local wrap = create("Frame", {
-        Size = UDim2.new(1, -20, 0, 42),
-        Position = UDim2.new(0, 10, 0, yPos),
-        BackgroundTransparency = 1,
-        Parent = parent,
-    })
-    create("TextLabel", {
-        Size = UDim2.new(0.6, 0, 0, 16),
-        BackgroundTransparency = 1,
-        Text = label,
-        TextColor3 = PALETTE.TextDim,
-        TextSize = 10,
-        Font = Enum.Font.GothamMedium,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = wrap,
-    })
-    local valLbl = create("TextLabel", {
-        Size = UDim2.new(0.4, 0, 0, 16),
-        Position = UDim2.new(0.6, 0, 0, 0),
-        BackgroundTransparency = 1,
-        Text = string.format("%.1f", initial),
-        TextColor3 = PALETTE.Text,
-        TextSize = 10,
-        Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        Parent = wrap,
-    })
-    local bar = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 4),
-        Position = UDim2.new(0, 0, 0, 26),
-        BackgroundColor3 = PALETTE.LineSoft,
-        BorderSizePixel = 0,
-        Parent = wrap,
-    })
-    create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = bar })
-    local fill = create("Frame", {
-        Size = UDim2.new((initial - minV) / (maxV - minV), 0, 1, 0),
-        BackgroundColor3 = PALETTE.Text,
-        BorderSizePixel = 0,
-        Parent = bar,
-    })
-    create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = fill })
-    local knob = create("Frame", {
-        Size = UDim2.new(0, 12, 0, 12),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new((initial - minV) / (maxV - minV), 0, 0.5, 0),
-        BackgroundColor3 = PALETTE.White,
-        BorderSizePixel = 0,
-        Parent = bar,
-    })
-    create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
-
-    local hit = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 20),
-        Position = UDim2.new(0, 0, 0, 18),
-        BackgroundTransparency = 1,
-        Text = "",
-        Parent = wrap,
-    })
-
-    local dragging = false
-    local function update(rel)
-        rel = math.clamp(rel, 0, 1)
-        local v = minV + (maxV - minV) * rel
-        fill.Size = UDim2.new(rel, 0, 1, 0)
-        knob.Position = UDim2.new(rel, 0, 0.5, 0)
-        valLbl.Text = string.format("%.1f", v)
-        if callback then callback(v) end
-    end
-    hit.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-        or i.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            update((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X)
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
-                     or i.UserInputType == Enum.UserInputType.Touch) then
-            update((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X)
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-        or i.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-    return {
-        setValue = function(v)
-            v = math.clamp(v, minV, maxV)
-            update((v - minV) / (maxV - minV))
-        end,
-    }
-end
-
-local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply)
+--=====================================================================
+-- TEXTBOX NUMÉRICA (somente este modo de velocidade é usado)
+--=====================================================================
+local function makeNumberInput(parent, labelKey, yPos, initial, minV, maxV, onApply)
     local wrap = create("Frame", {
         Size = UDim2.new(1, -20, 0, 52),
         Position = UDim2.new(0, 10, 0, yPos),
         BackgroundTransparency = 1,
         Parent = parent,
     })
-    create("TextLabel", {
+    local label = create("TextLabel", {
         Size = UDim2.new(1, 0, 0, 16),
         BackgroundTransparency = 1,
-        Text = label,
+        Text = T(labelKey),
         TextColor3 = PALETTE.TextDim,
         TextSize = 10,
         Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = wrap,
     })
+    registerText(label, labelKey)
+
     local box = create("TextBox", {
         Size = UDim2.new(0.52, -6, 0, 26),
         Position = UDim2.new(0, 0, 0, 20),
@@ -805,12 +853,13 @@ local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply
     box.FocusLost:Connect(function()
         tween(bxStroke, 0.2, { Color = PALETTE.Line, Transparency = 0.5 })
     end)
+
     local apply = create("TextButton", {
         Size = UDim2.new(0.48, -6, 0, 26),
         Position = UDim2.new(0.52, 6, 0, 20),
         BackgroundColor3 = PALETTE.Text,
         BorderSizePixel = 0,
-        Text = "APLICAR",
+        Text = T("apply"),
         TextColor3 = PALETTE.Black,
         TextSize = 11,
         Font = Enum.Font.GothamBold,
@@ -818,6 +867,7 @@ local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply
         Parent = wrap,
     })
     create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = apply })
+    registerText(apply, "apply")
     apply.MouseEnter:Connect(function()
         tween(apply, 0.15, { BackgroundColor3 = Color3.fromRGB(220, 220, 225) })
     end)
@@ -838,7 +888,7 @@ local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply
         if not num or num ~= num or num < minV or num > maxV then
             flash(Color3.fromRGB(230, 90, 90))
             local prev = box.Text
-            box.Text = "Inválido"
+            box.Text = T("invalid")
             task.delay(0.7, function() box.Text = prev end)
             return
         end
@@ -847,6 +897,7 @@ local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply
         flash(Color3.fromRGB(120, 220, 160))
         if onApply then onApply(num) end
     end)
+
     return { setText = function(v) box.Text = tostring(v) end }
 end
 
@@ -867,9 +918,9 @@ local updateSpeed
 --=====================================================================
 -- COLUNA 1 — ESP JOGADORES
 --=====================================================================
-local ESPPanel = makeSection(Col1, "ESP  •  JOGADORES", 0, 260)
+local ESPPanel = makeSection(Col1, "secPlayers", 0, 260)
 
-local espMainToggle = makeToggle(ESPPanel, "Ativar ESP", 36, CONFIG.ESP.Enabled, function(v)
+local espMainToggle = makeToggle(ESPPanel, "enableESP", 36, CONFIG.ESP.Enabled, function(v)
     CONFIG.ESP.Enabled = v
     updateStatusPill()
     if not v then
@@ -887,11 +938,11 @@ local espMainToggle = makeToggle(ESPPanel, "Ativar ESP", 36, CONFIG.ESP.Enabled,
     end
 end)
 
-makeToggle(ESPPanel, "Contorno (Highlight)", 72,  CONFIG.ESP.ShowHighlight, function(v) CONFIG.ESP.ShowHighlight = v; updateESPStyles() end)
-makeToggle(ESPPanel, "Caixa",                104, CONFIG.ESP.ShowBox,       function(v) CONFIG.ESP.ShowBox = v;       updateESPStyles() end)
-makeToggle(ESPPanel, "Nome + Papel",         136, CONFIG.ESP.ShowName,      function(v) CONFIG.ESP.ShowName = v;      updateESPStyles() end)
-makeToggle(ESPPanel, "Distância",            168, CONFIG.ESP.ShowDistance,  function(v) CONFIG.ESP.ShowDistance = v;  updateESPStyles() end)
-makeToggle(ESPPanel, "Barra de Vida",        200, CONFIG.ESP.ShowHealth,    function(v) CONFIG.ESP.ShowHealth = v;    updateESPStyles() end)
+makeToggle(ESPPanel, "highlight",  72,  CONFIG.ESP.ShowHighlight, function(v) CONFIG.ESP.ShowHighlight = v; updateESPStyles() end)
+makeToggle(ESPPanel, "box",        104, CONFIG.ESP.ShowBox,       function(v) CONFIG.ESP.ShowBox = v;       updateESPStyles() end)
+makeToggle(ESPPanel, "nameRole",   136, CONFIG.ESP.ShowName,      function(v) CONFIG.ESP.ShowName = v;      updateESPStyles() end)
+makeToggle(ESPPanel, "distance",   168, CONFIG.ESP.ShowDistance,  function(v) CONFIG.ESP.ShowDistance = v;  updateESPStyles() end)
+makeToggle(ESPPanel, "healthBar",  200, CONFIG.ESP.ShowHealth,    function(v) CONFIG.ESP.ShowHealth = v;    updateESPStyles() end)
 
 local boxModeBtn = create("TextButton", {
     Size = UDim2.new(1, -20, 0, 26),
@@ -899,7 +950,7 @@ local boxModeBtn = create("TextButton", {
     BackgroundColor3 = PALETTE.Bg2,
     BackgroundTransparency = 0.1,
     BorderSizePixel = 0,
-    Text = "MODO:  CAIXA COMPLETA",
+    Text = T(CONFIG.ESP.BoxMode == "Full" and "boxModeFull" or "boxModeCorner"),
     TextColor3 = PALETTE.Text,
     TextSize = 10,
     Font = Enum.Font.GothamBold,
@@ -908,15 +959,22 @@ local boxModeBtn = create("TextButton", {
 })
 create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = boxModeBtn })
 local bmStroke = create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.5, Parent = boxModeBtn })
+table.insert(textRegistry, {
+    obj = boxModeBtn,
+    key = "boxModeFull",  -- ajustado dinamicamente abaixo
+    isDynamic = true,
+    getter = function()
+        return CONFIG.ESP.BoxMode == "Full" and "boxModeFull" or "boxModeCorner"
+    end,
+})
 
 boxModeBtn.MouseButton1Click:Connect(function()
     if CONFIG.ESP.BoxMode == "Full" then
         CONFIG.ESP.BoxMode = "Corner"
-        boxModeBtn.Text = "MODO:  CANTOS"
     else
         CONFIG.ESP.BoxMode = "Full"
-        boxModeBtn.Text = "MODO:  CAIXA COMPLETA"
     end
+    boxModeBtn.Text = T(CONFIG.ESP.BoxMode == "Full" and "boxModeFull" or "boxModeCorner")
     updateESPStyles()
 end)
 boxModeBtn.MouseEnter:Connect(function()
@@ -929,38 +987,30 @@ boxModeBtn.MouseLeave:Connect(function()
 end)
 
 --=====================================================================
--- COLUNA 2 — VELOCIDADE
+-- COLUNA 2 — VELOCIDADE (somente TextBox)
 --=====================================================================
-local SpeedPanel = makeSection(Col2, "VELOCIDADE  (0 - 35)", 0, 260)
+local SpeedPanel = makeSection(Col2, "secSpeed", 0, 260)
 
-local speedMainToggle = makeToggle(SpeedPanel, "Ativar Modificador", 36, CONFIG.Speed.Enabled, function(v)
+local speedMainToggle = makeToggle(SpeedPanel, "enableSpeed", 36, CONFIG.Speed.Enabled, function(v)
     CONFIG.Speed.Enabled = v
     updateSpeed()
     updateStatusPill()
 end)
 
-local speedSlider = makeSlider(SpeedPanel, "Velocidade (0 - 35)", 70,
-    CONFIG.Speed.Value, CONFIG.Speed.Min, CONFIG.Speed.Max,
-    function(v)
-        CONFIG.Speed.Value = math.floor(v * 10 + 0.5) / 10
-        updateSpeed()
-    end
-)
-
-makeNumberInput(SpeedPanel, "Valor exato (0 - 35)", 118,
+-- SÓ o TextBox (o slider foi removido)
+makeNumberInput(SpeedPanel, "speedInput", 72,
     CONFIG.Speed.Value, CONFIG.Speed.Min, CONFIG.Speed.Max,
     function(v)
         CONFIG.Speed.Value = v
-        speedSlider.setValue(v)
         updateSpeed()
     end
 )
 
-create("TextLabel", {
+local shortcutsLbl = create("TextLabel", {
     Size = UDim2.new(1, -20, 0, 60),
-    Position = UDim2.new(0, 10, 0, 180),
+    Position = UDim2.new(0, 10, 0, 140),
     BackgroundTransparency = 1,
-    Text = "Atalhos:\n  RCtrl  →  ESP\n  RShift  →  Speed",
+    Text = T("shortcuts"),
     TextColor3 = PALETTE.TextMute,
     TextSize = 10,
     Font = Enum.Font.GothamMedium,
@@ -968,68 +1018,14 @@ create("TextLabel", {
     TextYAlignment = Enum.TextYAlignment.Top,
     Parent = SpeedPanel,
 })
+registerText(shortcutsLbl, "shortcuts")
 
 --=====================================================================
--- COLUNA 3 — COMPUTADORES + JAULAS + CORES
+-- Painel de jaulas na coluna 2 (abaixo do speed)
 --=====================================================================
-local CompPanel = makeSection(Col3, "ESP  •  COMPUTADORES", 0, 260)
+local CagePanel = makeSection(Col2, "secCages", 270, 260)
 
-makeToggle(CompPanel, "Ativar ESP Computadores", 36, CONFIG.ESP.ShowComputers, function(v)
-    CONFIG.ESP.ShowComputers = v
-    updateStatusPill()
-    if not v then
-        for _, data in pairs(trackedObjects) do
-            if data.hl then data.hl.Enabled = false end
-            if data.box then data.box.Visible = false end
-            if data.name then data.name.Visible = false end
-            if data.dist then data.dist.Visible = false end
-        end
-    end
-end)
-makeToggle(CompPanel, "Contorno",  72,  CONFIG.ESP.ComputerHighlight, function(v) CONFIG.ESP.ComputerHighlight = v end)
-makeToggle(CompPanel, "Caixa",     104, CONFIG.ESP.ComputerBox,       function(v) CONFIG.ESP.ComputerBox = v end)
-makeToggle(CompPanel, "Nome",      136, CONFIG.ESP.ComputerName,      function(v) CONFIG.ESP.ComputerName = v end)
-makeToggle(CompPanel, "Distância", 168, CONFIG.ESP.ComputerDistance,  function(v) CONFIG.ESP.ComputerDistance = v end)
-
-local strictModeBtn = create("TextButton", {
-    Size = UDim2.new(1, -20, 0, 26),
-    Position = UDim2.new(0, 10, 0, 200),
-    BackgroundColor3 = PALETTE.Bg2,
-    BackgroundTransparency = 0.1,
-    BorderSizePixel = 0,
-    Text = "MODO:  ESTRITO (recomendado)",
-    TextColor3 = PALETTE.Text,
-    TextSize = 10,
-    Font = Enum.Font.GothamBold,
-    AutoButtonColor = false,
-    Parent = CompPanel,
-})
-create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = strictModeBtn })
-local strictStroke = create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.5, Parent = strictModeBtn })
-
-strictModeBtn.MouseButton1Click:Connect(function()
-    CONFIG.ESP.ComputerStrictMode = not CONFIG.ESP.ComputerStrictMode
-    if CONFIG.ESP.ComputerStrictMode then
-        strictModeBtn.Text = "MODO:  ESTRITO (recomendado)"
-    else
-        strictModeBtn.Text = "MODO:  ABERTO (pega mais)"
-    end
-    lastMapRoot = nil
-end)
-strictModeBtn.MouseEnter:Connect(function()
-    tween(strictModeBtn, 0.15, { BackgroundColor3 = PALETTE.Bg2, BackgroundTransparency = 0 })
-    tween(strictStroke, 0.15, { Transparency = 0.2 })
-end)
-strictModeBtn.MouseLeave:Connect(function()
-    tween(strictModeBtn, 0.15, { BackgroundColor3 = PALETTE.Bg2, BackgroundTransparency = 0.1 })
-    tween(strictStroke, 0.15, { Transparency = 0.5 })
-end)
-
--- Painel de Jaulas de Gelo (na Col3 abaixo dos computadores, mas como Col3 já tem muita coisa,
--- vamos colocar as jaulas em uma seção separada da Coluna 2, abaixo dos atalhos)
-local CagePanel = makeSection(Col2, "ESP  •  JAULAS DE GELO", 270, 260)
-
-local cageMainToggle = makeToggle(CagePanel, "Ativar ESP Jaulas", 36, CONFIG.ESP.ShowCages, function(v)
+local cageMainToggle = makeToggle(CagePanel, "enableCage", 36, CONFIG.ESP.ShowCages, function(v)
     CONFIG.ESP.ShowCages = v
     updateStatusPill()
     if not v then
@@ -1041,16 +1037,16 @@ local cageMainToggle = makeToggle(CagePanel, "Ativar ESP Jaulas", 36, CONFIG.ESP
         end
     end
 end)
-makeToggle(CagePanel, "Contorno",  72,  CONFIG.ESP.CageHighlight, function(v) CONFIG.ESP.CageHighlight = v end)
-makeToggle(CagePanel, "Caixa",     104, CONFIG.ESP.CageBox,       function(v) CONFIG.ESP.CageBox = v end)
-makeToggle(CagePanel, "Nome",      136, CONFIG.ESP.CageName,      function(v) CONFIG.ESP.CageName = v end)
-makeToggle(CagePanel, "Distância", 168, CONFIG.ESP.CageDistance,  function(v) CONFIG.ESP.CageDistance = v end)
+makeToggle(CagePanel, "highlight", 72,  CONFIG.ESP.CageHighlight, function(v) CONFIG.ESP.CageHighlight = v end)
+makeToggle(CagePanel, "box",       104, CONFIG.ESP.CageBox,       function(v) CONFIG.ESP.CageBox = v end)
+makeToggle(CagePanel, "nameRole",  136, CONFIG.ESP.CageName,      function(v) CONFIG.ESP.CageName = v end)
+makeToggle(CagePanel, "distance",  168, CONFIG.ESP.CageDistance,  function(v) CONFIG.ESP.CageDistance = v end)
 
-create("TextLabel", {
+local cageNoteLbl = create("TextLabel", {
     Size = UDim2.new(1, -20, 0, 50),
     Position = UDim2.new(0, 10, 0, 200),
     BackgroundTransparency = 1,
-    Text = "Detecta jaulas por nome/tag:\n'cage', 'jaula', 'freeze', 'ice'...",
+    Text = T("cageNote"),
     TextColor3 = PALETTE.TextMute,
     TextSize = 9,
     Font = Enum.Font.GothamMedium,
@@ -1058,11 +1054,86 @@ create("TextLabel", {
     TextYAlignment = Enum.TextYAlignment.Top,
     Parent = CagePanel,
 })
+registerText(cageNoteLbl, "cageNote")
 
--- Painel de Cores (Col3, abaixo dos computadores)
-local ColorPanel = makeSection(Col3, "CORES  •  ESP", 270, 130)
+--=====================================================================
+-- COLUNA 3 — COMPUTADORES + CORES
+--=====================================================================
+local CompPanel = makeSection(Col3, "secComputers", 0, 260)
 
-local function makeColorBadge(parent, y, color, labelText)
+makeToggle(CompPanel, "enableComp", 36, CONFIG.ESP.ShowComputers, function(v)
+    CONFIG.ESP.ShowComputers = v
+    updateStatusPill()
+    if not v then
+        for _, data in pairs(trackedObjects) do
+            if data.hl then data.hl.Enabled = false end
+            if data.box then data.box.Visible = false end
+            if data.name then data.name.Visible = false end
+            if data.dist then data.dist.Visible = false end
+        end
+    end
+end)
+makeToggle(CompPanel, "highlight", 72,  CONFIG.ESP.ComputerHighlight, function(v) CONFIG.ESP.ComputerHighlight = v end)
+makeToggle(CompPanel, "box",       104, CONFIG.ESP.ComputerBox,       function(v) CONFIG.ESP.ComputerBox = v end)
+makeToggle(CompPanel, "nameRole",  136, CONFIG.ESP.ComputerName,      function(v) CONFIG.ESP.ComputerName = v end)
+makeToggle(CompPanel, "distance",  168, CONFIG.ESP.ComputerDistance,  function(v) CONFIG.ESP.ComputerDistance = v end)
+
+local strictModeBtn = create("TextButton", {
+    Size = UDim2.new(1, -20, 0, 26),
+    Position = UDim2.new(0, 10, 0, 200),
+    BackgroundColor3 = PALETTE.Bg2,
+    BackgroundTransparency = 0.1,
+    BorderSizePixel = 0,
+    Text = T(CONFIG.ESP.ComputerStrictMode and "strictMode" or "openMode"),
+    TextColor3 = PALETTE.Text,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    AutoButtonColor = false,
+    Parent = CompPanel,
+})
+create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = strictModeBtn })
+local strictStroke = create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.5, Parent = strictModeBtn })
+table.insert(textRegistry, {
+    obj = strictModeBtn,
+    key = "strictMode",
+    isDynamic = true,
+    getter = function()
+        return CONFIG.ESP.ComputerStrictMode and "strictMode" or "openMode"
+    end,
+})
+
+strictModeBtn.MouseButton1Click:Connect(function()
+    CONFIG.ESP.ComputerStrictMode = not CONFIG.ESP.ComputerStrictMode
+    strictModeBtn.Text = T(CONFIG.ESP.ComputerStrictMode and "strictMode" or "openMode")
+    lastMapRoot = nil
+end)
+strictModeBtn.MouseEnter:Connect(function()
+    tween(strictModeBtn, 0.15, { BackgroundColor3 = PALETTE.Bg2, BackgroundTransparency = 0 })
+    tween(strictStroke, 0.15, { Transparency = 0.2 })
+end)
+strictModeBtn.MouseLeave:Connect(function()
+    tween(strictModeBtn, 0.15, { BackgroundColor3 = PALETTE.Bg2, BackgroundTransparency = 0.1 })
+    tween(strictStroke, 0.15, { Transparency = 0.5 })
+end)
+
+local compNoteLbl = create("TextLabel", {
+    Size = UDim2.new(1, -20, 0, 30),
+    Position = UDim2.new(0, 10, 0, 228),
+    BackgroundTransparency = 1,
+    Text = T("compNote"),
+    TextColor3 = PALETTE.TextMute,
+    TextSize = 9,
+    Font = Enum.Font.GothamMedium,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    Parent = CompPanel,
+})
+registerText(compNoteLbl, "compNote")
+
+-- Painel de cores
+local ColorPanel = makeSection(Col3, "secColors", 270, 140)
+
+local function makeColorBadge(parent, y, color, labelKey)
     local row = create("Frame", {
         Size = UDim2.new(1, -20, 0, 22),
         Position = UDim2.new(0, 10, 0, y),
@@ -1078,35 +1149,36 @@ local function makeColorBadge(parent, y, color, labelText)
     })
     create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = sw })
     create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.5, Parent = sw })
-    create("TextLabel", {
+    local lbl = create("TextLabel", {
         Size = UDim2.new(1, -20, 1, 0),
         Position = UDim2.new(0, 20, 0, 0),
         BackgroundTransparency = 1,
-        Text = labelText,
+        Text = T(labelKey),
         TextColor3 = PALETTE.TextDim,
         TextSize = 10,
         Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = row,
     })
+    registerText(lbl, labelKey)
 end
 
-makeColorBadge(ColorPanel, 36, ESP_COLORS.Ally,     "Aliado — Verde")
-makeColorBadge(ColorPanel, 58, ESP_COLORS.Beast,    "Fera — Vermelho")
-makeColorBadge(ColorPanel, 80, ESP_COLORS.Computer, "Computador — Amarelo")
-makeColorBadge(ColorPanel, 102, ESP_COLORS.Cage,    "Jaula de Gelo — Ciano")
+makeColorBadge(ColorPanel, 36,  ESP_COLORS.Ally,     "colorAlly")
+makeColorBadge(ColorPanel, 58,  ESP_COLORS.Beast,    "colorBeast")
+makeColorBadge(ColorPanel, 80,  ESP_COLORS.Computer, "colorComp")
+makeColorBadge(ColorPanel, 102, ESP_COLORS.Cage,     "colorCage")
 
 --=====================================================================
--- STATUS PILL
+-- STATUS PILL (dinâmica com idioma)
 --=====================================================================
 function updateStatusPill()
     local parts = {}
-    if CONFIG.ESP.Enabled then table.insert(parts, "PLR") end
-    if CONFIG.ESP.ShowComputers then table.insert(parts, "PC") end
-    if CONFIG.ESP.ShowCages then table.insert(parts, "CAGE") end
-    if CONFIG.Speed.Enabled then table.insert(parts, "SPD") end
+    if CONFIG.ESP.Enabled then table.insert(parts, T("spPlayer")) end
+    if CONFIG.ESP.ShowComputers then table.insert(parts, T("spComputer")) end
+    if CONFIG.ESP.ShowCages then table.insert(parts, T("spCage")) end
+    if CONFIG.Speed.Enabled then table.insert(parts, T("spSpeed")) end
     local any = #parts > 0
-    local label = any and table.concat(parts, " • ") or "OFF"
+    local label = any and table.concat(parts, " • ") or T("statusOff")
 
     StatusText.Text = label
     tween(StatusDot, 0.25, { BackgroundColor3 = any and PALETTE.White or PALETTE.AccentOff })
@@ -1257,7 +1329,6 @@ end
 
 local function buildObjESP(inst)
     destroyObjESP(inst)
-
     local color = ESP_COLORS.Computer
 
     local hl = Instance.new("Highlight")
@@ -1280,7 +1351,7 @@ local function buildObjESP(inst)
     })
 
     local nameLbl = create("TextLabel", {
-        BackgroundTransparency = 1, Text = "◆ PC", TextColor3 = color,
+        BackgroundTransparency = 1, Text = T("pcShort"), TextColor3 = color,
         TextTransparency = CONFIG.ESP.Transparency, TextSize = 12,
         Font = Enum.Font.GothamBold, TextStrokeTransparency = 0.4,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
@@ -1304,7 +1375,7 @@ local function buildObjESP(inst)
 end
 
 --=====================================================================
--- BUILD ESP JAULA DE GELO
+-- BUILD ESP JAULA
 --=====================================================================
 local function destroyCageESP(inst)
     local data = trackedCages[inst]
@@ -1317,7 +1388,6 @@ end
 
 local function buildCageESP(inst)
     destroyCageESP(inst)
-
     local color = ESP_COLORS.Cage
 
     local hl = Instance.new("Highlight")
@@ -1340,7 +1410,7 @@ local function buildCageESP(inst)
     })
 
     local nameLbl = create("TextLabel", {
-        BackgroundTransparency = 1, Text = "❄ JAULA", TextColor3 = color,
+        BackgroundTransparency = 1, Text = T("cageShort"), TextColor3 = color,
         TextTransparency = CONFIG.ESP.Transparency, TextSize = 12,
         Font = Enum.Font.GothamBold, TextStrokeTransparency = 0.4,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
@@ -1434,26 +1504,20 @@ local function scanActiveMap()
     currentMapScanCount = 0
     currentCageScanCount = 0
 
-    -- Limpa rastreio antigo
     for inst in pairs(trackedObjects) do destroyObjESP(inst) end
     for inst in pairs(trackedCages) do destroyCageESP(inst) end
 
     local scanRoot = mapRoot or Workspace
-
     for _, inst in ipairs(scanRoot:GetDescendants()) do
         if isInExcludedContainer(inst) then continue end
 
-        -- Computadores
         if CONFIG.ESP.ShowComputers and currentMapScanCount < CONFIG.ESP.ComputerMaxCount then
             if isComputer(inst) and not trackedObjects[inst] then
                 buildObjESP(inst)
                 currentMapScanCount = currentMapScanCount + 1
             end
         end
-
-        -- Jaulas
         if CONFIG.ESP.ShowCages and currentCageScanCount < CONFIG.ESP.CageMaxCount then
-            -- Evita detectar a mesma coisa como PC e Jaula
             if not trackedObjects[inst] and isCage(inst) and not trackedCages[inst] then
                 buildCageESP(inst)
                 currentCageScanCount = currentCageScanCount + 1
@@ -1484,7 +1548,6 @@ local scanTimer = 0
 local objRenderFrame = 0
 
 RunService.RenderStepped:Connect(function(dt)
-    -- Rescan do mapa ativo
     scanTimer = scanTimer + dt
     if scanTimer >= CONFIG.ESP.ComputerRescanRate then
         scanTimer = 0
@@ -1527,6 +1590,9 @@ RunService.RenderStepped:Connect(function(dt)
             end
 
             if data.hl then data.hl.Enabled = CONFIG.ESP.ShowHighlight end
+
+            -- Atualiza role (caso mude)
+            if data.role then data.role.Text = getRoleLabel(plr) end
 
             local headPos, onHead = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
             local footPos, onFoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
@@ -1582,7 +1648,6 @@ RunService.RenderStepped:Connect(function(dt)
                 data.name.Text = plr.Name
                 data.role.Visible = true
                 data.role.Position = UDim2.new(0, topX, 0, boxY - 16)
-                data.role.Text = getRoleLabel(plr)
             else
                 data.name.Visible = false
                 data.role.Visible = false
@@ -1620,7 +1685,7 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- ============ OBJETOS (PCs + Jaulas) a cada 2 frames ============
+    -- ============ OBJETOS a cada 2 frames ============
     objRenderFrame = objRenderFrame + 1
     if objRenderFrame >= 2 then
         objRenderFrame = 0
@@ -1681,7 +1746,7 @@ RunService.RenderStepped:Connect(function(dt)
                 if CONFIG.ESP.ComputerName then
                     data.name.Visible = true
                     data.name.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 22)
-                    data.name.Text = "◆ " .. inst.Name
+                    data.name.Text = T("pcShort") .. " " .. inst.Name
                 else
                     data.name.Visible = false
                 end
@@ -1703,7 +1768,7 @@ RunService.RenderStepped:Connect(function(dt)
             end
         end
 
-        -- JAULAS DE GELO
+        -- JAULAS
         if CONFIG.ESP.ShowCages then
             for inst, data in pairs(trackedCages) do
                 if not inst.Parent then destroyCageESP(inst); continue end
@@ -1759,7 +1824,7 @@ RunService.RenderStepped:Connect(function(dt)
                 if CONFIG.ESP.CageName then
                     data.name.Visible = true
                     data.name.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 24)
-                    data.name.Text = "❄ " .. inst.Name
+                    data.name.Text = T("cageShort") .. " " .. inst.Name
                 else
                     data.name.Visible = false
                 end
@@ -1799,6 +1864,36 @@ RunService.Heartbeat:Connect(function()
 end)
 
 --=====================================================================
+-- TROCA DE IDIOMA
+--=====================================================================
+LangBtn.MouseButton1Click:Connect(function()
+    LANG = (LANG == "pt") and "en" or "pt"
+    refreshTexts()
+    -- Atualiza os textos com getter dinâmico
+    for _, entry in ipairs(textRegistry) do
+        if entry.isDynamic and entry.obj and entry.obj.Parent then
+            entry.obj.Text = T(entry.getter())
+        end
+    end
+    -- Atualiza nomes dentro do ESP (papéis e prefixos)
+    for plr, data in pairs(tracked) do
+        if data.role then data.role.Text = getRoleLabel(plr) end
+    end
+    for _, data in pairs(trackedObjects) do
+        if data.name then
+            local instName = data.name.Text:gsub("^◆ PC ", ""):gsub("^◆ ", "")
+            data.name.Text = T("pcShort") .. " " .. instName
+        end
+    end
+    for _, data in pairs(trackedCages) do
+        if data.name then
+            local instName = data.name.Text:gsub("^❄ JAULA ", ""):gsub("^❄ CAGE ", ""):gsub("^❄ ", "")
+            data.name.Text = T("cageShort") .. " " .. instName
+        end
+    end
+end)
+
+--=====================================================================
 -- KEYBINDS
 --=====================================================================
 UserInputService.InputBegan:Connect(function(input, gp)
@@ -1818,4 +1913,4 @@ scanActiveMap()
 updateStatusPill()
 updateSpeed()
 
-print("[MonoChrome Test Suite v4] Carregado. Mapa ativo:", activeMapRoot and activeMapRoot.Name or "n/a")
+print("[MonoChrome Test Suite v5] Carregado. Mapa ativo:", activeMapRoot and activeMapRoot.Name or "n/a")
