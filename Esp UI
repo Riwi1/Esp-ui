@@ -1,6 +1,6 @@
 --=====================================================================
--- MONOCHROME TEST SUITE  •  ESP + SPEED  •  5v1 (Flee Style)
--- Estética preta e branca • minimalista • animações suaves
+-- MONOCHROME TEST SUITE  •  ESP + SPEED  •  5v1  •  XENO-READY
+-- Compatível com executores (Xeno) — Parent: PlayerGui / gethui()
 --=====================================================================
 
 --// SERVIÇOS
@@ -8,11 +8,19 @@ local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
-local CoreGui          = game:GetService("CoreGui")
 local Workspace        = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera      = Workspace.CurrentCamera
+
+--// PARENT UNIVERSAL (Xeno-safe)
+local UIParent
+if gethui then
+    pcall(function() UIParent = gethui() end)
+end
+if not UIParent then
+    UIParent = LocalPlayer:WaitForChild("PlayerGui")
+end
 
 --=====================================================================
 -- PALETA
@@ -43,10 +51,9 @@ local CONFIG = {
         ShowDistance  = true,
         ShowHighlight = true,
         ShowHealth    = true,
-        ShowRole      = true,  -- etiqueta "BEAST" / "SURVIVOR"
-        BoxMode       = "Corner",  -- "Full" | "Corner"
-        ColorEnemy    = Color3.fromRGB(255, 255, 255),  -- Fera (perigo)
-        ColorAlly     = Color3.fromRGB(130, 130, 140),  -- Aliados
+        BoxMode       = "Full",  -- "Full" | "Corner"
+        ColorEnemy    = Color3.fromRGB(255, 255, 255),
+        ColorAlly     = Color3.fromRGB(130, 130, 140),
         Transparency  = 0.15,
         Thickness     = 1.5,
         MaxDistance   = 500,
@@ -63,10 +70,6 @@ local CONFIG = {
         ToggleSpeed = Enum.KeyCode.RightShift,
     },
 }
-
--- Nomes das equipes do seu jogo — AJUSTE se forem diferentes
-local TEAM_BEAST    = "Beast"        -- time da fera
-local TEAM_SURVIVOR = "Survivors"    -- time dos sobreviventes
 
 --=====================================================================
 -- HELPERS
@@ -92,7 +95,7 @@ end
 -- LIMPEZA
 --=====================================================================
 for _, name in ipairs({"PremiumMonochromeUI", "ESPOverlay"}) do
-    local old = CoreGui:FindFirstChild(name)
+    local old = UIParent:FindFirstChild(name)
     if old then old:Destroy() end
 end
 for _, plr in ipairs(Players:GetPlayers()) do
@@ -110,11 +113,11 @@ local ScreenGui = create("ScreenGui", {
     ResetOnSpawn = false,
     IgnoreGuiInset = true,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-    Parent = CoreGui,
+    Parent = UIParent,
 })
 
 --=====================================================================
--- JANELA
+-- JANELA PRINCIPAL
 --=====================================================================
 local Main = create("Frame", {
     Name = "Main",
@@ -222,7 +225,7 @@ local StatusText = create("TextLabel", {
     Parent = StatusPill,
 })
 
--- Botões ctrl
+-- Botões de controle
 local function makeCtrlButton(text, xOff, hoverBg)
     local btn = create("TextButton", {
         Size = UDim2.new(0, 28, 0, 28),
@@ -305,7 +308,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     tween(Main, 0.22, { Size = UDim2.new(0,0,0,0), BackgroundTransparency = 1 }, Enum.EasingStyle.Quint)
     task.wait(0.25)
     ScreenGui:Destroy()
-    local ov = CoreGui:FindFirstChild("ESPOverlay")
+    local ov = UIParent:FindFirstChild("ESPOverlay")
     if ov then ov:Destroy() end
 end)
 
@@ -541,7 +544,7 @@ local function makeSlider(parent, label, yPos, initial, minV, maxV, callback)
 end
 
 --=====================================================================
--- TEXTBOX NUMÉRICA
+-- TEXTBOX
 --=====================================================================
 local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply)
     local wrap = create("Frame", {
@@ -630,10 +633,10 @@ local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply
 end
 
 --=====================================================================
--- FUNÇÕES DE ESTADO (definidas ANTES dos callbacks que as usam)
+-- FORWARD DECLARATIONS
 --=====================================================================
 local tracked = {}
-local updateESPStyles -- forward
+local updateESPStyles
 local updateStatusPill
 local updateSpeed
 
@@ -652,7 +655,6 @@ makeToggle(ESPPanel, "Nome + Papel",         136, CONFIG.ESP.ShowName,      func
 makeToggle(ESPPanel, "Distância",            168, CONFIG.ESP.ShowDistance,  function(v) CONFIG.ESP.ShowDistance = v;  updateESPStyles() end)
 makeToggle(ESPPanel, "Barra de Vida",        200, CONFIG.ESP.ShowHealth,    function(v) CONFIG.ESP.ShowHealth = v;    updateESPStyles() end)
 
--- Modo de caixa
 local boxModeBtn = create("TextButton", {
     Size = UDim2.new(1, -20, 0, 26),
     Position = UDim2.new(0, 10, 0, 228),
@@ -716,7 +718,6 @@ makeNumberInput(SpeedPanel, "Valor exato (0 - 22)", 118,
     end
 )
 
--- Atalhos
 create("TextLabel", {
     Size = UDim2.new(1, -20, 0, 60),
     Position = UDim2.new(0, 10, 0, 180),
@@ -747,7 +748,6 @@ create("TextLabel", {
     Parent = CustomPanel,
 })
 
--- Amostra de cor Fera
 local beastSwatch = create("Frame", {
     Size = UDim2.new(0, 14, 0, 14),
     Position = UDim2.new(1, -30, 0, 32),
@@ -757,7 +757,6 @@ local beastSwatch = create("Frame", {
 })
 create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = beastSwatch })
 
--- Amostra de cor Aliado
 local allySwatch = create("Frame", {
     Size = UDim2.new(0, 14, 0, 14),
     Position = UDim2.new(1, -30, 0, 60),
@@ -767,8 +766,26 @@ local allySwatch = create("Frame", {
 })
 create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = allySwatch })
 
--- Cores predefinidas (monocromáticas)
-local function makeColorRow(parent, label, yPos, presets, getColor, setColor, swatch)
-    create("TextLabel", {
-        Size = UDim2.new(0.4, 0, 0, 22),
-        Position = UDim2.new(0, 10, 0, yPos),
+-- Labels das cores
+create("TextLabel", {
+    Size = UDim2.new(0.6, 0, 0, 20),
+    Position = UDim2.new(0, 10, 0, 29),
+    BackgroundTransparency = 1,
+    Text = "Fera (inimigo)",
+    TextColor3 = PALETTE.TextDim,
+    TextSize = 11,
+    Font = Enum.Font.GothamMedium,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = CustomPanel,
+})
+
+create("TextLabel", {
+    Size = UDim2.new(0.6, 0, 0, 20),
+    Position = UDim2.new(0, 10, 0, 57),
+    BackgroundTransparency = 1,
+    Text = "Aliados",
+    TextColor3 = PALETTE.TextDim,
+    TextSize = 11,
+    Font = Enum.Font.GothamMedium,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = CustomPanel
