@@ -1,11 +1,8 @@
 --=====================================================================
--- MONOCHROME TEST SUITE  •  v7
--- Menu P&B • ESP colorido • Velocidade 0-35 • Idiomas PT/EN
--- Fera detectada pelo TeamColor vermelho
--- Jaulas detectadas por "pod", "cage", "ice", etc
+-- MONOCHROME TEST SUITE  •  v7.1 (fix)
 --=====================================================================
+print("[Mono v7.1] Iniciando...")
 
---// SERVIÇOS
 local Players            = game:GetService("Players")
 local RunService         = game:GetService("RunService")
 local UserInputService   = game:GetService("UserInputService")
@@ -16,13 +13,18 @@ local CollectionService  = game:GetService("CollectionService")
 local LocalPlayer = Players.LocalPlayer
 local Camera      = Workspace.CurrentCamera
 
+-- UIParent
 local UIParent
-if gethui then pcall(function() UIParent = gethui() end) end
-if not UIParent then UIParent = LocalPlayer:WaitForChild("PlayerGui") end
+if gethui then
+    local ok, result = pcall(gethui)
+    if ok and result then UIParent = result end
+end
+if not UIParent then
+    UIParent = LocalPlayer:WaitForChild("PlayerGui")
+end
+print("[Mono v7.1] UIParent:", UIParent:GetFullName())
 
---=====================================================================
 -- PALETA
---=====================================================================
 local PALETTE = {
     Bg0 = Color3.fromRGB(12, 12, 14),
     Bg1 = Color3.fromRGB(20, 20, 23),
@@ -45,14 +47,12 @@ local ESP_COLORS = {
     Cage     = Color3.fromRGB(90, 220, 255),
 }
 
---=====================================================================
 -- IDIOMAS
---=====================================================================
 local LANG = "pt"
 
 local STRINGS = {
     pt = {
-        title = "MONOCHROME  •  TEST SUITE  v7",
+        title = "MONOCHROME  •  TEST SUITE  v7.1",
         statusOff = "OFF", langBtn = "PT",
         secPlayers = "ESP  •  JOGADORES", secSpeed = "VELOCIDADE  (0 - 35)",
         secComputers = "ESP  •  COMPUTADORES", secCages = "ESP  •  JAULAS DE GELO",
@@ -61,7 +61,6 @@ local STRINGS = {
         enableComp = "Ativar ESP Computadores", enableCage = "Ativar ESP Jaulas",
         highlight = "Contorno (Highlight)", box = "Caixa",
         nameRole = "Nome + Papel", distance = "Distância", healthBar = "Barra de Vida",
-        boxModeFull = "MODO:  CAIXA COMPLETA", boxModeCorner = "MODO:  CANTOS",
         speedInput = "Valor exato (0 - 35)", apply = "APLICAR",
         shortcuts = "Atalhos:\n  RCtrl  →  ESP\n  RShift  →  Speed",
         strictMode = "MODO:  ESTRITO", openMode = "MODO:  ABERTO",
@@ -75,7 +74,7 @@ local STRINGS = {
         toggleDebug = "Debug: Log objetos no console",
     },
     en = {
-        title = "MONOCHROME  •  TEST SUITE  v7",
+        title = "MONOCHROME  •  TEST SUITE  v7.1",
         statusOff = "OFF", langBtn = "EN",
         secPlayers = "ESP  •  PLAYERS", secSpeed = "SPEED  (0 - 35)",
         secComputers = "ESP  •  COMPUTERS", secCages = "ESP  •  ICE CAGES",
@@ -84,7 +83,6 @@ local STRINGS = {
         enableComp = "Enable Computer ESP", enableCage = "Enable Cage ESP",
         highlight = "Highlight", box = "Box",
         nameRole = "Name + Role", distance = "Distance", healthBar = "Health Bar",
-        boxModeFull = "MODE:  FULL BOX", boxModeCorner = "MODE:  CORNERS",
         speedInput = "Exact value (0 - 35)", apply = "APPLY",
         shortcuts = "Shortcuts:\n  RCtrl  →  ESP\n  RShift  →  Speed",
         strictMode = "MODE:  STRICT", openMode = "MODE:  OPEN",
@@ -104,9 +102,7 @@ local function T(key)
     return pack[key] or key
 end
 
---=====================================================================
 -- CONFIG
---=====================================================================
 local CONFIG = {
     ESP = {
         Enabled = false,
@@ -124,7 +120,6 @@ local CONFIG = {
         CageDistance = true, CageHighlight = true,
         CageMaxDistance = 400, CageMaxCount = 30,
 
-        -- Detecção da Fera (prioridade: TeamColor vermelho)
         BeastTeamColors = {
             Enum.TeamColor.BrightRed,
             Enum.TeamColor.ReallyRed,
@@ -132,7 +127,6 @@ local CONFIG = {
         },
         BeastNameMatch = { "beast", "fera", "monster", "monstro", "killer", "savage" },
         BeastTeamMatch = { "beast", "fera", "monster", "monstro", "killer" },
-        BeastAttribute = "IsBeast",
         BeastAttrKeys = { "IsBeast", "Beast", "Fera", "Role", "isBeast", "role" },
         BeastAttrValues = { "beast", "fera", "monster", "monstro", "killer" },
 
@@ -174,7 +168,6 @@ local CONFIG = {
             "furniture", "sign", "billboard", "background", "prop",
         },
 
-        -- Jaulas — inclui "pod" (nome no seu jogo)
         CageStrongMatch = {
             "freezecage", "freeze_cage", "icecage", "ice_cage",
             "frozencage", "frozen_cage", "frozen", "freeze",
@@ -215,9 +208,7 @@ local CONFIG = {
     },
 }
 
---=====================================================================
 -- HELPERS
---=====================================================================
 local function create(cls, props)
     local inst = Instance.new(cls)
     for k, v in pairs(props or {}) do inst[k] = v end
@@ -240,11 +231,25 @@ local function containsAny(str, list)
     return false
 end
 
+-- FORWARD DECLARATIONS (antes de qualquer uso)
+local tracked = {}
+local trackedObjects = {}
+local trackedCages = {}
+local activeMapRoot = nil
+local lastMapRoot = nil
+local currentMapScanCount = 0
+local currentCageScanCount = 0
+
+local updateStatusPill = function() end
+local updateSpeed = function() end
+local updateESPStyles = function() end
+
+-- DETECÇÃO DA FERA
 local function checkValuesForBeast(inst)
     if not inst then return false end
     for _, key in ipairs(CONFIG.ESP.BeastAttrKeys) do
-        local val = inst:GetAttribute(key)
-        if val ~= nil then
+        local ok, val = pcall(function() return inst:GetAttribute(key) end)
+        if ok and val ~= nil then
             if val == true then return true end
             if type(val) == "string" and containsAny(val, CONFIG.ESP.BeastAttrValues) then return true end
         end
@@ -255,36 +260,29 @@ local function checkValuesForBeast(inst)
         elseif child:IsA("StringValue") then
             if containsAny(child.Value, CONFIG.ESP.BeastAttrValues) or
                containsAny(child.Name, CONFIG.ESP.BeastNameMatch) then return true end
-        elseif child:IsA("ObjectValue") then
-            if child.Value and containsAny(child.Value.Name, CONFIG.ESP.BeastNameMatch) then return true end
         end
     end
     return false
 end
 
---=====================================================================
--- DETECÇÃO DA FERA (TeamColor vermelho = prioridade máxima)
---=====================================================================
 local function isRedTeam(plr)
-    local tc = plr.TeamColor
-    for _, red in ipairs(CONFIG.ESP.BeastTeamColors) do
-        if tc == red then return true end
-    end
-    -- Verifica também o time diretamente
-    if plr.Team then
-        local teamColor = plr.Team.TeamColor
+    local ok, tc = pcall(function() return plr.TeamColor end)
+    if ok and tc then
         for _, red in ipairs(CONFIG.ESP.BeastTeamColors) do
-            if teamColor == red then return true end
+            if tc == red then return true end
+        end
+    end
+    local ok2, team = pcall(function() return plr.Team end)
+    if ok2 and team then
+        for _, red in ipairs(CONFIG.ESP.BeastTeamColors) do
+            if team.TeamColor == red then return true end
         end
     end
     return false
 end
 
 local function isBeast(plr)
-    -- PRIORIDADE 1: TeamColor vermelho (é assim que o seu jogo marca a Fera)
     if isRedTeam(plr) then return true end
-
-    -- PRIORIDADE 2: atributos/values
     if checkValuesForBeast(plr) then return true end
     local char = plr.Character
     if char then
@@ -294,26 +292,15 @@ local function isBeast(plr)
             if containsAny(tag, CONFIG.ESP.BeastNameMatch) then return true end
         end
     end
-
-    -- PRIORIDADE 3: tags no player
     for _, tag in ipairs(CollectionService:GetTags(plr)) do
         if containsAny(tag, CONFIG.ESP.BeastNameMatch) then return true end
     end
-
-    -- PRIORIDADE 4: nome do player
     if containsAny(plr.Name, CONFIG.ESP.BeastNameMatch) then return true end
-
-    -- PRIORIDADE 5: nome do time
     if plr.Team and containsAny(plr.Team.Name, CONFIG.ESP.BeastTeamMatch) then return true end
-
-    -- PRIORIDADE 6: WalkSpeed alto
     if char then
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum and hum.WalkSpeed > 22 and hum.WalkSpeed < 100 then
-            return true
-        end
+        if hum and hum.WalkSpeed > 22 and hum.WalkSpeed < 100 then return true end
     end
-
     return false
 end
 
@@ -327,9 +314,7 @@ local function getRoleLabel(plr)
     return T("survivor")
 end
 
---=====================================================================
 -- MAPA ATIVO
---=====================================================================
 local function getActiveMapRoot()
     local char = LocalPlayer.Character
     if not char then return nil end
@@ -354,9 +339,7 @@ local function isInExcludedContainer(inst)
     return false
 end
 
---=====================================================================
--- DETECÇÃO DE COMPUTADOR
---=====================================================================
+-- DETECÇÃO PC / JAULA
 local function isComputer(inst)
     if not inst or not inst.Parent then return false end
     if inst:IsA("Player") then return false end
@@ -384,9 +367,6 @@ local function isComputer(inst)
     return false
 end
 
---=====================================================================
--- DETECÇÃO DE JAULA
---=====================================================================
 local function isCage(inst)
     if not inst or not inst.Parent then return false end
     if inst:IsA("Player") then return false end
@@ -406,9 +386,7 @@ local function isCage(inst)
     return false
 end
 
---=====================================================================
 -- LIMPEZA
---=====================================================================
 for _, name in ipairs({"PremiumMonochromeUI", "ESPOverlay"}) do
     local old = UIParent:FindFirstChild(name)
     if old then old:Destroy() end
@@ -420,9 +398,7 @@ for _, plr in ipairs(Players:GetPlayers()) do
     end
 end
 
---=====================================================================
 -- GUI
---=====================================================================
 local ScreenGui = create("ScreenGui", {
     Name = "PremiumMonochromeUI", ResetOnSpawn = false,
     IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -445,9 +421,7 @@ create("UIGradient", {
     Rotation = 90, Parent = Main,
 })
 
---=====================================================================
 -- TOP BAR
---=====================================================================
 local TopBar = create("Frame", {
     Size = UDim2.new(1, 0, 0, 48),
     BackgroundColor3 = PALETTE.Bg1, BackgroundTransparency = 0.25,
@@ -533,9 +507,7 @@ local MinBtn   = makeCtrlButton("—", -108, PALETTE.Bg2)
 local RestBtn  = makeCtrlButton("▢", -74,  PALETTE.Bg2)
 local CloseBtn = makeCtrlButton("✕", -40,  Color3.fromRGB(45, 45, 50))
 
---=====================================================================
 -- CONTENT
---=====================================================================
 local Content = create("Frame", {
     Name = "Content", Size = UDim2.new(1, -24, 1, -60),
     Position = UDim2.new(0, 12, 0, 52),
@@ -568,12 +540,6 @@ CloseBtn.MouseButton1Click:Connect(function()
             if hl then hl:Destroy() end
         end
     end
-    for _, inst in ipairs(Workspace:GetDescendants()) do
-        local hl = inst:FindFirstChild("MonoESP_Obj_HL")
-        if hl then hl:Destroy() end
-        local hl2 = inst:FindFirstChild("MonoESP_Cage_HL")
-        if hl2 then hl2:Destroy() end
-    end
     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum then hum.WalkSpeed = CONFIG.Speed.Default end
     tween(Main, 0.22, { Size = UDim2.new(0,0,0,0), BackgroundTransparency = 1 }, Enum.EasingStyle.Quint)
@@ -583,9 +549,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     if ov then ov:Destroy() end
 end)
 
---=====================================================================
 -- DRAGGABLE
---=====================================================================
 do
     local dragging, dragStart, startPos
     TopBar.InputBegan:Connect(function(input)
@@ -607,9 +571,7 @@ do
     end)
 end
 
---=====================================================================
 -- LAYOUT
---=====================================================================
 local function makeColumn(parent, xScale, xOff, width)
     return create("Frame", {
         Size = UDim2.new(width, -8, 1, 0),
@@ -622,6 +584,7 @@ local Col1 = makeColumn(Content, 0,    0,   0.34)
 local Col2 = makeColumn(Content, 0.34, 6,   0.33)
 local Col3 = makeColumn(Content, 0.67, 12,  0.33)
 
+-- TEXTO REGISTRY
 local textRegistry = {}
 local function registerText(obj, key)
     table.insert(textRegistry, { obj = obj, key = key })
@@ -631,7 +594,7 @@ end
 local function refreshTexts()
     for _, entry in ipairs(textRegistry) do
         if entry.obj and entry.obj.Parent then
-            if entry.isDynamic then
+            if entry.isDynamic and entry.getter then
                 entry.obj.Text = T(entry.getter())
             else
                 entry.obj.Text = T(entry.key)
@@ -643,6 +606,7 @@ local function refreshTexts()
     updateStatusPill()
 end
 
+-- SEÇÃO
 local function makeSection(parent, titleKey, yOffset, height)
     local section = create("Frame", {
         Size = UDim2.new(1, 0, 0, height),
@@ -667,6 +631,7 @@ local function makeSection(parent, titleKey, yOffset, height)
     return section
 end
 
+-- TOGGLE
 local function makeToggle(parent, labelKey, yPos, initial, callback)
     local row = create("Frame", {
         Size = UDim2.new(1, -20, 0, 28), Position = UDim2.new(0, 10, 0, yPos),
@@ -710,6 +675,7 @@ local function makeToggle(parent, labelKey, yPos, initial, callback)
     return { set = set, get = function() return state end }
 end
 
+-- TEXTBOX
 local function makeNumberInput(parent, labelKey, yPos, initial, minV, maxV, onApply)
     local wrap = create("Frame", {
         Size = UDim2.new(1, -20, 0, 52), Position = UDim2.new(0, 10, 0, yPos),
@@ -768,23 +734,7 @@ local function makeNumberInput(parent, labelKey, yPos, initial, minV, maxV, onAp
     return { setText = function(v) box.Text = tostring(v) end }
 end
 
---=====================================================================
--- FORWARD
---=====================================================================
-local tracked = {}
-local trackedObjects = {}
-local trackedCages = {}
-local activeMapRoot = nil
-local lastMapRoot = nil
-local currentMapScanCount = 0
-local currentCageScanCount = 0
-local updateESPStyles
-local updateStatusPill
-local updateSpeed
-
---=====================================================================
--- COLUNA 1 — ESP JOGADORES
---=====================================================================
+-- COLUNA 1
 local ESPPanel = makeSection(Col1, "secPlayers", 0, 260)
 
 local espMainToggle = makeToggle(ESPPanel, "enableESP", 36, CONFIG.ESP.Enabled, function(v)
@@ -809,9 +759,7 @@ makeToggle(ESPPanel, "nameRole",  136, CONFIG.ESP.ShowName,      function(v) CON
 makeToggle(ESPPanel, "distance",  168, CONFIG.ESP.ShowDistance,  function(v) CONFIG.ESP.ShowDistance = v;  updateESPStyles() end)
 makeToggle(ESPPanel, "healthBar", 200, CONFIG.ESP.ShowHealth,    function(v) CONFIG.ESP.ShowHealth = v;    updateESPStyles() end)
 
---=====================================================================
--- COLUNA 2 — SPEED + JAULAS
---=====================================================================
+-- COLUNA 2
 local SpeedPanel = makeSection(Col2, "secSpeed", 0, 200)
 
 local speedMainToggle = makeToggle(SpeedPanel, "enableSpeed", 36, CONFIG.Speed.Enabled, function(v)
@@ -863,9 +811,7 @@ local cageNoteLbl = create("TextLabel", {
 })
 registerText(cageNoteLbl, "cageNote")
 
---=====================================================================
--- COLUNA 3 — COMPUTADORES + CORES
---=====================================================================
+-- COLUNA 3
 local CompPanel = makeSection(Col3, "secComputers", 0, 280)
 
 makeToggle(CompPanel, "enableComp", 36, CONFIG.ESP.ShowComputers, function(v)
@@ -923,7 +869,7 @@ local debugStroke = create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Tr
 registerText(debugBtn, "toggleDebug")
 debugBtn.MouseButton1Click:Connect(function()
     local mapRoot = getActiveMapRoot() or Workspace
-    print("===== DEBUG MONOCHROME v7 =====")
+    print("===== DEBUG MONOCHROME v7.1 =====")
     print("Mapa ativo:", mapRoot:GetFullName())
     print("--- Jogadores e times ---")
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -953,16 +899,6 @@ debugBtn.MouseButton1Click:Connect(function()
             end
         end
         if shown > 100 then print("  ... (truncado)"); break end
-    end
-    print("--- Tags CollectionService ---")
-    local ok, tags = pcall(function() return CollectionService:GetAllTags() end)
-    if ok and tags then
-        for _, tag in ipairs(tags) do
-            local list = CollectionService:GetTagged(tag)
-            if #list > 0 then
-                print(string.format("  Tag '%s': %d objetos (ex: %s)", tag, #list, list[1]:GetFullName()))
-            end
-        end
     end
     print("===== FIM DEBUG =====")
 end)
@@ -1002,10 +938,8 @@ makeColorBadge(ColorPanel, 58,  ESP_COLORS.Beast,    "colorBeast")
 makeColorBadge(ColorPanel, 80,  ESP_COLORS.Computer, "colorComp")
 makeColorBadge(ColorPanel, 102, ESP_COLORS.Cage,     "colorCage")
 
---=====================================================================
--- STATUS PILL
---=====================================================================
-function updateStatusPill()
+-- FUNÇÕES (agora definidas de verdade)
+updateStatusPill = function()
     local parts = {}
     if CONFIG.ESP.Enabled then table.insert(parts, T("spPlayer")) end
     if CONFIG.ESP.ShowComputers then table.insert(parts, T("spComputer")) end
@@ -1019,16 +953,13 @@ function updateStatusPill()
     tween(StatusStroke, 0.25, { Transparency = any and 0.15 or 0.4 })
 end
 
---=====================================================================
--- SPEED
---=====================================================================
 local function getHumanoid()
     local char = LocalPlayer.Character
     if not char then return nil end
     return char:FindFirstChildOfClass("Humanoid")
 end
 
-function updateSpeed()
+updateSpeed = function()
     local hum = getHumanoid()
     if not hum then return end
     hum.WalkSpeed = CONFIG.Speed.Enabled and CONFIG.Speed.Value or CONFIG.Speed.Default
@@ -1039,17 +970,12 @@ LocalPlayer.CharacterAdded:Connect(function()
     updateSpeed()
 end)
 
---=====================================================================
 -- ESP OVERLAY
---=====================================================================
 local ESPOverlay = create("ScreenGui", {
     Name = "ESPOverlay", ResetOnSpawn = false, IgnoreGuiInset = true,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = UIParent,
 })
 
---=====================================================================
--- BUILD ESP JOGADOR
---=====================================================================
 local function destroyESP(plr)
     local data = tracked[plr]
     if not data then return end
@@ -1124,9 +1050,6 @@ local function buildESP(plr)
     }
 end
 
---=====================================================================
--- BUILD ESP PC
---=====================================================================
 local function destroyObjESP(inst)
     local data = trackedObjects[inst]
     if not data then return end
@@ -1173,9 +1096,6 @@ local function buildObjESP(inst)
     trackedObjects[inst] = { hl = hl, box = box, boxStroke = boxStroke, name = nameLbl, dist = distLbl }
 end
 
---=====================================================================
--- BUILD ESP JAULA
---=====================================================================
 local function destroyCageESP(inst)
     local data = trackedCages[inst]
     if not data then return end
@@ -1222,10 +1142,7 @@ local function buildCageESP(inst)
     trackedCages[inst] = { hl = hl, box = box, boxStroke = boxStroke, name = nameLbl, dist = distLbl }
 end
 
---=====================================================================
--- UPDATE ESTILO
---=====================================================================
-function updateESPStyles()
+updateESPStyles = function()
     for plr, data in pairs(tracked) do
         local color = getESPColor(plr)
         if data.hl then
@@ -1279,9 +1196,6 @@ function updateESPStyles()
     end
 end
 
---=====================================================================
--- SCAN
---=====================================================================
 local function scanActiveMap()
     local mapRoot = getActiveMapRoot()
     activeMapRoot = mapRoot
@@ -1316,9 +1230,6 @@ local function scanActiveMap()
     end
 end
 
---=====================================================================
--- PLAYER EVENTS
---=====================================================================
 local function onPlayerAdded(plr)
     plr.CharacterAdded:Connect(function()
         task.wait(0.3)
@@ -1337,9 +1248,6 @@ for _, plr in ipairs(Players:GetPlayers()) do onPlayerAdded(plr) end
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(destroyESP)
 
---=====================================================================
--- LOOP
---=====================================================================
 local scanTimer = 0
 local objRenderFrame = 0
 
@@ -1371,7 +1279,6 @@ RunService.RenderStepped:Connect(function(dt)
                 if dist > CONFIG.ESP.MaxDistance then hidden = true end
             end
 
-            -- Atualiza cor e role (team pode mudar)
             local color = getESPColor(plr)
             local role = getRoleLabel(plr)
             if data.boxStroke then data.boxStroke.Color = color end
@@ -1628,9 +1535,6 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
---=====================================================================
--- GARANTIR BUILD
---=====================================================================
 RunService.Heartbeat:Connect(function()
     if CONFIG.ESP.Enabled then
         for _, plr in ipairs(Players:GetPlayers()) do
@@ -1643,14 +1547,11 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
---=====================================================================
--- TROCA DE IDIOMA
---=====================================================================
 LangBtn.MouseButton1Click:Connect(function()
     LANG = (LANG == "pt") and "en" or "pt"
     refreshTexts()
     for _, entry in ipairs(textRegistry) do
-        if entry.isDynamic and entry.obj and entry.obj.Parent then
+        if entry.isDynamic and entry.getter and entry.obj and entry.obj.Parent then
             entry.obj.Text = T(entry.getter())
         end
     end
@@ -1659,9 +1560,6 @@ LangBtn.MouseButton1Click:Connect(function()
     end
 end)
 
---=====================================================================
--- KEYBINDS
---=====================================================================
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == CONFIG.Keybind.ToggleESP then
@@ -1671,12 +1569,9 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
---=====================================================================
--- BOOT
---=====================================================================
 task.wait(0.5)
 scanActiveMap()
 updateStatusPill()
 updateSpeed()
 
-print("[MonoChrome Test Suite v7] Carregado. Mapa ativo:", activeMapRoot and activeMapRoot.Name or "n/a")
+print("[MonoChrome Test Suite v7.1] Carregado. Mapa ativo:", activeMapRoot and activeMapRoot.Name or "n/a")
