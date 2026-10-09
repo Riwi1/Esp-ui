@@ -1,7 +1,7 @@
 --=====================================================================
--- MONOCHROME TEST SUITE  •  ESP + SPEED  •  Versão Final Completa
--- Menu P&B • ESP: verde=aliado, vermelho=fera, amarelo=computadores
--- Filtro anti-lag + anti-falso-positivo (arcade/TV/etc)
+-- MONOCHROME TEST SUITE  •  ESP + SPEED  •  Versão Final v4
+-- Menu P&B • ESP: verde=aliado, vermelho=fera, amarelo=PCs, ciano=jaulas
+-- Velocidade 0-35 • Filtro anti-lag + anti-falso-positivo
 --=====================================================================
 
 --// SERVIÇOS
@@ -46,9 +46,10 @@ local PALETTE = {
 -- CORES DO ESP
 --=====================================================================
 local ESP_COLORS = {
-    Ally     = Color3.fromRGB(80, 220, 120),    -- verde
-    Beast    = Color3.fromRGB(230, 60, 60),     -- vermelho
-    Computer = Color3.fromRGB(255, 210, 60),    -- amarelo
+    Ally     = Color3.fromRGB(80, 220, 120),     -- verde
+    Beast    = Color3.fromRGB(230, 60, 60),      -- vermelho
+    Computer = Color3.fromRGB(255, 210, 60),     -- amarelo
+    Cage     = Color3.fromRGB(90, 220, 255),     -- ciano (jaulas de gelo)
 }
 
 --=====================================================================
@@ -80,13 +81,21 @@ local CONFIG = {
         ComputerMaxCount    = 30,
         ComputerStrictMode  = true,
 
+        -- Jaulas de Gelo
+        ShowCages           = true,
+        CageBox             = true,
+        CageName            = true,
+        CageDistance        = true,
+        CageHighlight       = true,
+        CageMaxDistance     = 400,
+        CageMaxCount        = 20,
+
         -- Detecção da Fera
         BeastNameMatch = { "beast", "fera", "monster", "monstro", "killer" },
         BeastTeamMatch = { "beast", "fera", "monster", "monstro", "killer" },
         BeastAttribute = "IsBeast",
 
-        -- ===== DETECÇÃO DE COMPUTADORES (anti-falso-positivo) =====
-        -- Whitelist FORTE (sempre pega, mesmo no modo estrito)
+        -- ===== DETECÇÃO DE COMPUTADORES =====
         ComputerStrongMatch = {
             "objectivecomputer", "objective_computer", "objective computer",
             "hackable", "hackablecomputer", "hackable_computer",
@@ -95,14 +104,10 @@ local CONFIG = {
             "objective", "objetivo",
             "computer", "computador",
         },
-
-        -- Whitelist FRACA (só pega em modo aberto)
         ComputerWeakMatch = {
             "pc", "laptop", "console", "monitor", "screen", "tela",
             "panel", "painel", "hack", "task", "tarefa",
         },
-
-        -- Blacklist (NUNCA pega, mesmo se bater whitelist)
         ComputerBlacklist = {
             "arcade", "arcademachine", "fliperama", "flipperama",
             "tv", "television", "televisao", "televisão",
@@ -118,19 +123,41 @@ local CONFIG = {
             "chair", "cadeira", "table", "mesa", "desk",
             "window", "janela", "door", "porta", "wall", "parede",
         },
-
-        -- Tags preferenciais
         ComputerTagMatch = {
             "objective_computer", "objectivecomputer", "computer_objective",
             "hackable", "hackable_computer", "objective", "objetivo",
             "generator", "gerador", "terminal", "task_computer",
             "objective_terminal", "task",
         },
-
-        -- Tags que SEMPRE descartam
         ComputerTagBlacklist = {
             "decor", "decoration", "arcade", "tv", "poster",
             "furniture", "sign", "billboard", "background", "prop",
+        },
+
+        -- ===== DETECÇÃO DE JAULAS DE GELO =====
+        CageStrongMatch = {
+            "freezecage", "freeze_cage", "icecage", "ice_cage",
+            "frozencage", "frozen_cage", "frozen", "freeze",
+            "jaula", "jaulagelo", "jaula_gelo", "jauladegelo",
+            "gelo", "ice", "cage", "prison", "prisao", "prisão",
+            "cell", "cela", "cubicle", "cubículo", "cubicle",
+        },
+        CageWeakMatch = {
+            "iceblock", "ice_block", "icecube", "ice_cube",
+            "frozenplayer", "frozen_player", "iceprison",
+        },
+        CageBlacklist = {
+            "icecream", "snow", "neve", "fog", "fogão", "fire",
+            "freezer", "fridge", "geladeira", "iceberg", "icicle",
+            "glass", "vidro", "window", "janela",
+        },
+        CageTagMatch = {
+            "freeze_cage", "freezecage", "ice_cage", "icecage",
+            "frozen_cage", "frozencage", "cage", "jaula",
+            "objective_cage", "task_cage",
+        },
+        CageTagBlacklist = {
+            "decor", "decoration", "background", "prop",
         },
 
         -- Containers que NÃO devem ser escaneados
@@ -143,7 +170,7 @@ local CONFIG = {
         Enabled = false,
         Value   = 16,
         Min     = 0,
-        Max     = 22,
+        Max     = 35,       -- AUMENTADO: era 22, agora 35
         Default = 16,
     },
     Keybind = {
@@ -253,41 +280,25 @@ local function isInExcludedContainer(inst)
 end
 
 --=====================================================================
--- DETECÇÃO DE COMPUTADOR (anti-falso-positivo)
+-- DETECÇÃO DE COMPUTADOR
 --=====================================================================
 local function isComputer(inst)
     if not inst or not inst.Parent then return false end
     if inst:IsA("Player") then return false end
     if inst:IsA("Model") and #inst:GetChildren() > 40 then return false end
 
-    -- 1) Checa tags primeiro (mais confiável)
     local tags = CollectionService:GetTags(inst)
 
-    -- Tag blacklist descarta imediatamente
     for _, tag in ipairs(tags) do
-        if containsAny(tag, CONFIG.ESP.ComputerTagBlacklist) then
-            return false
-        end
+        if containsAny(tag, CONFIG.ESP.ComputerTagBlacklist) then return false end
     end
-
-    -- Tag whitelist aprova imediatamente
     for _, tag in ipairs(tags) do
-        if containsAny(tag, CONFIG.ESP.ComputerTagMatch) then
-            return true
-        end
+        if containsAny(tag, CONFIG.ESP.ComputerTagMatch) then return true end
     end
 
-    -- 2) Blacklist de nome
-    if containsAny(inst.Name, CONFIG.ESP.ComputerBlacklist) then
-        return false
-    end
+    if containsAny(inst.Name, CONFIG.ESP.ComputerBlacklist) then return false end
+    if containsAny(inst.Name, CONFIG.ESP.ComputerStrongMatch) then return true end
 
-    -- 3) Whitelist FORTE
-    if containsAny(inst.Name, CONFIG.ESP.ComputerStrongMatch) then
-        return true
-    end
-
-    -- 4) Whitelist FRACA (só modo aberto)
     if not CONFIG.ESP.ComputerStrictMode then
         if containsAny(inst.Name, CONFIG.ESP.ComputerWeakMatch) then
             if inst.Parent and containsAny(inst.Parent.Name, CONFIG.ESP.ComputerBlacklist) then
@@ -295,6 +306,34 @@ local function isComputer(inst)
             end
             return true
         end
+    end
+
+    return false
+end
+
+--=====================================================================
+-- DETECÇÃO DE JAULA DE GELO
+--=====================================================================
+local function isCage(inst)
+    if not inst or not inst.Parent then return false end
+    if inst:IsA("Player") then return false end
+    if inst:IsA("Model") and #inst:GetChildren() > 40 then return false end
+
+    local tags = CollectionService:GetTags(inst)
+
+    for _, tag in ipairs(tags) do
+        if containsAny(tag, CONFIG.ESP.CageTagBlacklist) then return false end
+    end
+    for _, tag in ipairs(tags) do
+        if containsAny(tag, CONFIG.ESP.CageTagMatch) then return true end
+    end
+
+    if containsAny(inst.Name, CONFIG.ESP.CageBlacklist) then return false end
+    if containsAny(inst.Name, CONFIG.ESP.CageStrongMatch) then return true end
+
+    -- Jaulas fracas só pegam se realmente parecer gelo
+    if containsAny(inst.Name, CONFIG.ESP.CageWeakMatch) then
+        return true
     end
 
     return false
@@ -327,8 +366,8 @@ local ScreenGui = create("ScreenGui", {
 
 local Main = create("Frame", {
     Name = "Main",
-    Size = UDim2.new(0, 600, 0, 500),
-    Position = UDim2.new(0.5, -300, 0.5, -250),
+    Size = UDim2.new(0, 640, 0, 560),
+    Position = UDim2.new(0.5, -320, 0.5, -280),
     BackgroundColor3 = PALETTE.Bg0,
     BackgroundTransparency = 0.05,
     BorderSizePixel = 0,
@@ -374,10 +413,10 @@ create("TextLabel", {
     Parent = TopBar,
 })
 create("TextLabel", {
-    Size = UDim2.new(0, 320, 1, 0),
+    Size = UDim2.new(0, 340, 1, 0),
     Position = UDim2.new(0, 52, 0, 0),
     BackgroundTransparency = 1,
-    Text = "MONOCHROME  •  5v1  •  TEST SUITE",
+    Text = "MONOCHROME  •  5v1  •  TEST SUITE  v4",
     TextColor3 = PALETTE.Text,
     TextSize = 12,
     Font = Enum.Font.GothamBold,
@@ -386,8 +425,8 @@ create("TextLabel", {
 })
 
 local StatusPill = create("Frame", {
-    Size = UDim2.new(0, 130, 0, 22),
-    Position = UDim2.new(1, -280, 0.5, -11),
+    Size = UDim2.new(0, 150, 0, 22),
+    Position = UDim2.new(1, -300, 0.5, -11),
     BackgroundColor3 = PALETTE.Bg2,
     BackgroundTransparency = 0.2,
     BorderSizePixel = 0,
@@ -461,8 +500,8 @@ local Content = create("Frame", {
 })
 
 local minimized = false
-local fullSize = UDim2.new(0, 600, 0, 500)
-local miniSize = UDim2.new(0, 600, 0, 48)
+local fullSize = UDim2.new(0, 640, 0, 560)
+local miniSize = UDim2.new(0, 640, 0, 48)
 
 MinBtn.MouseButton1Click:Connect(function()
     if minimized then return end
@@ -473,7 +512,7 @@ end)
 
 RestBtn.MouseButton1Click:Connect(function()
     if not minimized then
-        tween(Main, 0.35, { Position = UDim2.new(0.5, -300, 0.5, -250) }, Enum.EasingStyle.Quint)
+        tween(Main, 0.35, { Position = UDim2.new(0.5, -320, 0.5, -280) }, Enum.EasingStyle.Quint)
         return
     end
     minimized = false
@@ -491,6 +530,8 @@ CloseBtn.MouseButton1Click:Connect(function()
     for _, inst in ipairs(Workspace:GetDescendants()) do
         local hl = inst:FindFirstChild("MonoESP_Obj_HL")
         if hl then hl:Destroy() end
+        local hl2 = inst:FindFirstChild("MonoESP_Cage_HL")
+        if hl2 then hl2:Destroy() end
     end
     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum then hum.WalkSpeed = CONFIG.Speed.Default end
@@ -814,9 +855,11 @@ end
 --=====================================================================
 local tracked = {}
 local trackedObjects = {}
+local trackedCages = {}
 local activeMapRoot = nil
 local lastMapRoot = nil
 local currentMapScanCount = 0
+local currentCageScanCount = 0
 local updateESPStyles
 local updateStatusPill
 local updateSpeed
@@ -888,7 +931,7 @@ end)
 --=====================================================================
 -- COLUNA 2 — VELOCIDADE
 --=====================================================================
-local SpeedPanel = makeSection(Col2, "VELOCIDADE", 0, 260)
+local SpeedPanel = makeSection(Col2, "VELOCIDADE  (0 - 35)", 0, 260)
 
 local speedMainToggle = makeToggle(SpeedPanel, "Ativar Modificador", 36, CONFIG.Speed.Enabled, function(v)
     CONFIG.Speed.Enabled = v
@@ -896,7 +939,7 @@ local speedMainToggle = makeToggle(SpeedPanel, "Ativar Modificador", 36, CONFIG.
     updateStatusPill()
 end)
 
-local speedSlider = makeSlider(SpeedPanel, "Velocidade (0 - 22)", 70,
+local speedSlider = makeSlider(SpeedPanel, "Velocidade (0 - 35)", 70,
     CONFIG.Speed.Value, CONFIG.Speed.Min, CONFIG.Speed.Max,
     function(v)
         CONFIG.Speed.Value = math.floor(v * 10 + 0.5) / 10
@@ -904,7 +947,7 @@ local speedSlider = makeSlider(SpeedPanel, "Velocidade (0 - 22)", 70,
     end
 )
 
-makeNumberInput(SpeedPanel, "Valor exato (0 - 22)", 118,
+makeNumberInput(SpeedPanel, "Valor exato (0 - 35)", 118,
     CONFIG.Speed.Value, CONFIG.Speed.Min, CONFIG.Speed.Max,
     function(v)
         CONFIG.Speed.Value = v
@@ -927,7 +970,7 @@ create("TextLabel", {
 })
 
 --=====================================================================
--- COLUNA 3 — COMPUTADORES + CORES
+-- COLUNA 3 — COMPUTADORES + JAULAS + CORES
 --=====================================================================
 local CompPanel = makeSection(Col3, "ESP  •  COMPUTADORES", 0, 260)
 
@@ -982,20 +1025,42 @@ strictModeBtn.MouseLeave:Connect(function()
     tween(strictStroke, 0.15, { Transparency = 0.5 })
 end)
 
+-- Painel de Jaulas de Gelo (na Col3 abaixo dos computadores, mas como Col3 já tem muita coisa,
+-- vamos colocar as jaulas em uma seção separada da Coluna 2, abaixo dos atalhos)
+local CagePanel = makeSection(Col2, "ESP  •  JAULAS DE GELO", 270, 260)
+
+local cageMainToggle = makeToggle(CagePanel, "Ativar ESP Jaulas", 36, CONFIG.ESP.ShowCages, function(v)
+    CONFIG.ESP.ShowCages = v
+    updateStatusPill()
+    if not v then
+        for _, data in pairs(trackedCages) do
+            if data.hl then data.hl.Enabled = false end
+            if data.box then data.box.Visible = false end
+            if data.name then data.name.Visible = false end
+            if data.dist then data.dist.Visible = false end
+        end
+    end
+end)
+makeToggle(CagePanel, "Contorno",  72,  CONFIG.ESP.CageHighlight, function(v) CONFIG.ESP.CageHighlight = v end)
+makeToggle(CagePanel, "Caixa",     104, CONFIG.ESP.CageBox,       function(v) CONFIG.ESP.CageBox = v end)
+makeToggle(CagePanel, "Nome",      136, CONFIG.ESP.CageName,      function(v) CONFIG.ESP.CageName = v end)
+makeToggle(CagePanel, "Distância", 168, CONFIG.ESP.CageDistance,  function(v) CONFIG.ESP.CageDistance = v end)
+
 create("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 30),
-    Position = UDim2.new(0, 10, 0, 228),
+    Size = UDim2.new(1, -20, 0, 50),
+    Position = UDim2.new(0, 10, 0, 200),
     BackgroundTransparency = 1,
-    Text = "Ajuste a lista no topo do script\npara o seu jogo.",
+    Text = "Detecta jaulas por nome/tag:\n'cage', 'jaula', 'freeze', 'ice'...",
     TextColor3 = PALETTE.TextMute,
     TextSize = 9,
     Font = Enum.Font.GothamMedium,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
-    Parent = CompPanel,
+    Parent = CagePanel,
 })
 
-local ColorPanel = makeSection(Col3, "CORES  •  ESP", 270, 90)
+-- Painel de Cores (Col3, abaixo dos computadores)
+local ColorPanel = makeSection(Col3, "CORES  •  ESP", 270, 130)
 
 local function makeColorBadge(parent, y, color, labelText)
     local row = create("Frame", {
@@ -1029,6 +1094,7 @@ end
 makeColorBadge(ColorPanel, 36, ESP_COLORS.Ally,     "Aliado — Verde")
 makeColorBadge(ColorPanel, 58, ESP_COLORS.Beast,    "Fera — Vermelho")
 makeColorBadge(ColorPanel, 80, ESP_COLORS.Computer, "Computador — Amarelo")
+makeColorBadge(ColorPanel, 102, ESP_COLORS.Cage,    "Jaula de Gelo — Ciano")
 
 --=====================================================================
 -- STATUS PILL
@@ -1037,6 +1103,7 @@ function updateStatusPill()
     local parts = {}
     if CONFIG.ESP.Enabled then table.insert(parts, "PLR") end
     if CONFIG.ESP.ShowComputers then table.insert(parts, "PC") end
+    if CONFIG.ESP.ShowCages then table.insert(parts, "CAGE") end
     if CONFIG.Speed.Enabled then table.insert(parts, "SPD") end
     local any = #parts > 0
     local label = any and table.concat(parts, " • ") or "OFF"
@@ -1237,6 +1304,66 @@ local function buildObjESP(inst)
 end
 
 --=====================================================================
+-- BUILD ESP JAULA DE GELO
+--=====================================================================
+local function destroyCageESP(inst)
+    local data = trackedCages[inst]
+    if not data then return end
+    for _, obj in pairs(data) do
+        if typeof(obj) == "Instance" and obj.Parent then obj:Destroy() end
+    end
+    trackedCages[inst] = nil
+end
+
+local function buildCageESP(inst)
+    destroyCageESP(inst)
+
+    local color = ESP_COLORS.Cage
+
+    local hl = Instance.new("Highlight")
+    hl.Name = "MonoESP_Cage_HL"
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.FillTransparency = 1
+    hl.OutlineTransparency = CONFIG.ESP.Transparency
+    hl.FillColor = color
+    hl.OutlineColor = color
+    hl.Adornee = inst
+    hl.Parent = inst
+
+    local box = create("Frame", {
+        BackgroundTransparency = 1, BorderSizePixel = 0,
+        Visible = false, Parent = ESPOverlay,
+    })
+    local boxStroke = create("UIStroke", {
+        Color = color, Thickness = CONFIG.ESP.Thickness,
+        Transparency = CONFIG.ESP.Transparency, Parent = box,
+    })
+
+    local nameLbl = create("TextLabel", {
+        BackgroundTransparency = 1, Text = "❄ JAULA", TextColor3 = color,
+        TextTransparency = CONFIG.ESP.Transparency, TextSize = 12,
+        Font = Enum.Font.GothamBold, TextStrokeTransparency = 0.4,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.new(0, 140, 0, 14),
+        AnchorPoint = Vector2.new(0.5, 1), Visible = false, Parent = ESPOverlay,
+    })
+
+    local distLbl = create("TextLabel", {
+        BackgroundTransparency = 1, Text = "0m", TextColor3 = color,
+        TextTransparency = CONFIG.ESP.Transparency, TextSize = 11,
+        Font = Enum.Font.GothamMedium, TextStrokeTransparency = 0.4,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.new(0, 80, 0, 12),
+        AnchorPoint = Vector2.new(0.5, 0), Visible = false, Parent = ESPOverlay,
+    })
+
+    trackedCages[inst] = {
+        hl = hl, box = box, boxStroke = boxStroke,
+        name = nameLbl, dist = distLbl,
+    }
+end
+
+--=====================================================================
 -- UPDATE ESTILO
 --=====================================================================
 function updateESPStyles()
@@ -1277,14 +1404,26 @@ function updateESPStyles()
         if data.name then data.name.TextColor3 = ESP_COLORS.Computer; data.name.TextTransparency = CONFIG.ESP.Transparency end
         if data.dist then data.dist.TextColor3 = ESP_COLORS.Computer; data.dist.TextTransparency = CONFIG.ESP.Transparency end
     end
+    for _, data in pairs(trackedCages) do
+        if data.boxStroke then
+            data.boxStroke.Color = ESP_COLORS.Cage
+            data.boxStroke.Thickness = CONFIG.ESP.Thickness
+            data.boxStroke.Transparency = CONFIG.ESP.Transparency
+        end
+        if data.hl then
+            data.hl.FillColor = ESP_COLORS.Cage
+            data.hl.OutlineColor = ESP_COLORS.Cage
+            data.hl.OutlineTransparency = CONFIG.ESP.Transparency
+        end
+        if data.name then data.name.TextColor3 = ESP_COLORS.Cage; data.name.TextTransparency = CONFIG.ESP.Transparency end
+        if data.dist then data.dist.TextColor3 = ESP_COLORS.Cage; data.dist.TextTransparency = CONFIG.ESP.Transparency end
+    end
 end
 
 --=====================================================================
--- SCAN INTELIGENTE (SÓ MAPA ATIVO)
+-- SCAN DO MAPA ATIVO
 --=====================================================================
-local function scanActiveMapComputers()
-    if not CONFIG.ESP.ShowComputers then return end
-
+local function scanActiveMap()
     local mapRoot = getActiveMapRoot()
     activeMapRoot = mapRoot
 
@@ -1293,21 +1432,31 @@ local function scanActiveMapComputers()
 
     lastMapRoot = mapRoot
     currentMapScanCount = 0
+    currentCageScanCount = 0
 
     -- Limpa rastreio antigo
-    for inst in pairs(trackedObjects) do
-        destroyObjESP(inst)
-    end
+    for inst in pairs(trackedObjects) do destroyObjESP(inst) end
+    for inst in pairs(trackedCages) do destroyCageESP(inst) end
 
     local scanRoot = mapRoot or Workspace
 
     for _, inst in ipairs(scanRoot:GetDescendants()) do
-        if currentMapScanCount >= CONFIG.ESP.ComputerMaxCount then break end
         if isInExcludedContainer(inst) then continue end
-        if isComputer(inst) then
-            if not trackedObjects[inst] then
+
+        -- Computadores
+        if CONFIG.ESP.ShowComputers and currentMapScanCount < CONFIG.ESP.ComputerMaxCount then
+            if isComputer(inst) and not trackedObjects[inst] then
                 buildObjESP(inst)
                 currentMapScanCount = currentMapScanCount + 1
+            end
+        end
+
+        -- Jaulas
+        if CONFIG.ESP.ShowCages and currentCageScanCount < CONFIG.ESP.CageMaxCount then
+            -- Evita detectar a mesma coisa como PC e Jaula
+            if not trackedObjects[inst] and isCage(inst) and not trackedCages[inst] then
+                buildCageESP(inst)
+                currentCageScanCount = currentCageScanCount + 1
             end
         end
     end
@@ -1332,24 +1481,24 @@ Players.PlayerRemoving:Connect(destroyESP)
 -- LOOP PRINCIPAL
 --=====================================================================
 local scanTimer = 0
-local pcRenderFrame = 0
+local objRenderFrame = 0
 
 RunService.RenderStepped:Connect(function(dt)
     -- Rescan do mapa ativo
     scanTimer = scanTimer + dt
     if scanTimer >= CONFIG.ESP.ComputerRescanRate then
         scanTimer = 0
-        scanActiveMapComputers()
+        scanActiveMap()
     end
 
     local currentRoot = getActiveMapRoot()
     if currentRoot ~= lastMapRoot then
-        scanActiveMapComputers()
+        scanActiveMap()
     end
 
     local myPos = Camera.CFrame.Position
 
-    -- JOGADORES
+    -- ============ JOGADORES ============
     if CONFIG.ESP.Enabled then
         for plr, data in pairs(tracked) do
             local char = plr.Character
@@ -1471,11 +1620,12 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- COMPUTADORES (a cada 2 frames)
-    pcRenderFrame = pcRenderFrame + 1
-    if pcRenderFrame >= 2 then
-        pcRenderFrame = 0
+    -- ============ OBJETOS (PCs + Jaulas) a cada 2 frames ============
+    objRenderFrame = objRenderFrame + 1
+    if objRenderFrame >= 2 then
+        objRenderFrame = 0
 
+        -- COMPUTADORES
         if CONFIG.ESP.ShowComputers then
             for inst, data in pairs(trackedObjects) do
                 if not inst.Parent then destroyObjESP(inst); continue end
@@ -1552,6 +1702,84 @@ RunService.RenderStepped:Connect(function(dt)
                 if data.dist then data.dist.Visible = false end
             end
         end
+
+        -- JAULAS DE GELO
+        if CONFIG.ESP.ShowCages then
+            for inst, data in pairs(trackedCages) do
+                if not inst.Parent then destroyCageESP(inst); continue end
+
+                local pos = inst:IsA("BasePart") and inst.Position or nil
+                if not pos then
+                    local pp = inst:FindFirstChildWhichIsA("BasePart", true)
+                    if pp then pos = pp.Position end
+                end
+                if not pos and inst:IsA("Model") then
+                    pos = inst:GetPivot().Position
+                end
+
+                if not pos then
+                    if data.box then data.box.Visible = false end
+                    if data.name then data.name.Visible = false end
+                    if data.dist then data.dist.Visible = false end
+                    if data.hl then data.hl.Enabled = false end
+                    continue
+                end
+
+                local dist = (pos - myPos).Magnitude
+                if dist > CONFIG.ESP.CageMaxDistance then
+                    if data.box then data.box.Visible = false end
+                    if data.name then data.name.Visible = false end
+                    if data.dist then data.dist.Visible = false end
+                    if data.hl then data.hl.Enabled = false end
+                    continue
+                end
+
+                local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
+                if not onScreen then
+                    if data.box then data.box.Visible = false end
+                    if data.name then data.name.Visible = false end
+                    if data.dist then data.dist.Visible = false end
+                    if data.hl then data.hl.Enabled = false end
+                    continue
+                end
+
+                if data.hl then data.hl.Enabled = CONFIG.ESP.CageHighlight end
+
+                if CONFIG.ESP.CageBox then
+                    local size = math.clamp(3500 / math.max(dist, 1), 16, 70)
+                    data.box.Visible = true
+                    data.box.Position = UDim2.new(0, screenPos.X - size/2, 0, screenPos.Y - size/2)
+                    data.box.Size = UDim2.new(0, size, 0, size)
+                    data.boxStroke.Enabled = true
+                else
+                    data.box.Visible = false
+                    data.boxStroke.Enabled = false
+                end
+
+                if CONFIG.ESP.CageName then
+                    data.name.Visible = true
+                    data.name.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 24)
+                    data.name.Text = "❄ " .. inst.Name
+                else
+                    data.name.Visible = false
+                end
+
+                if CONFIG.ESP.CageDistance then
+                    data.dist.Visible = true
+                    data.dist.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y + 20)
+                    data.dist.Text = string.format("%dm", math.floor(dist))
+                else
+                    data.dist.Visible = false
+                end
+            end
+        else
+            for _, data in pairs(trackedCages) do
+                if data.hl then data.hl.Enabled = false end
+                if data.box then data.box.Visible = false end
+                if data.name then data.name.Visible = false end
+                if data.dist then data.dist.Visible = false end
+            end
+        end
     end
 end)
 
@@ -1586,8 +1814,8 @@ end)
 -- BOOT
 --=====================================================================
 task.wait(0.5)
-scanActiveMapComputers()
+scanActiveMap()
 updateStatusPill()
 updateSpeed()
 
-print("[MonoChrome Test Suite] Carregado. Mapa ativo:", activeMapRoot and activeMapRoot.Name or "n/a")
+print("[MonoChrome Test Suite v4] Carregado. Mapa ativo:", activeMapRoot and activeMapRoot.Name or "n/a")
