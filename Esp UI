@@ -1,14 +1,16 @@
 --=====================================================================
--- MONOCHROME TEST SUITE  •  ESP + SPEED  •  5v1  •  XENO-READY
--- Compatível com executores (Xeno) — Parent: PlayerGui / gethui()
+-- MONOCHROME TEST SUITE  •  ESP (Players + Computers) + SPEED  •  5v1
+-- Menu: preto e branco
+-- ESP: VERDE (aliado) • VERMELHO (fera) • AMARELO (computadores)
 --=====================================================================
 
 --// SERVIÇOS
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
-local Workspace        = game:GetService("Workspace")
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local TweenService       = game:GetService("TweenService")
+local Workspace          = game:GetService("Workspace")
+local CollectionService  = game:GetService("CollectionService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera      = Workspace.CurrentCamera
@@ -23,21 +25,30 @@ if not UIParent then
 end
 
 --=====================================================================
--- PALETA
+-- PALETA (menu)
 --=====================================================================
 local PALETTE = {
-    Bg0       = Color3.fromRGB(12, 12, 14),
-    Bg1       = Color3.fromRGB(20, 20, 23),
-    Bg2       = Color3.fromRGB(28, 28, 32),
-    Line      = Color3.fromRGB(55, 55, 62),
-    LineSoft  = Color3.fromRGB(40, 40, 46),
-    Text      = Color3.fromRGB(240, 240, 245),
-    TextDim   = Color3.fromRGB(150, 150, 160),
-    TextMute  = Color3.fromRGB(95, 95, 105),
-    White     = Color3.fromRGB(255, 255, 255),
-    Black     = Color3.fromRGB(0, 0, 0),
-    AccentOn  = Color3.fromRGB(245, 245, 250),
+    Bg0 = Color3.fromRGB(12, 12, 14),
+    Bg1 = Color3.fromRGB(20, 20, 23),
+    Bg2 = Color3.fromRGB(28, 28, 32),
+    Line = Color3.fromRGB(55, 55, 62),
+    LineSoft = Color3.fromRGB(40, 40, 46),
+    Text = Color3.fromRGB(240, 240, 245),
+    TextDim = Color3.fromRGB(150, 150, 160),
+    TextMute = Color3.fromRGB(95, 95, 105),
+    White = Color3.fromRGB(255, 255, 255),
+    Black = Color3.fromRGB(0, 0, 0),
+    AccentOn = Color3.fromRGB(245, 245, 250),
     AccentOff = Color3.fromRGB(70, 70, 78),
+}
+
+--=====================================================================
+-- CORES DO ESP
+--=====================================================================
+local ESP_COLORS = {
+    Ally      = Color3.fromRGB(80, 220, 120),   -- verde
+    Beast     = Color3.fromRGB(230, 60, 60),    -- vermelho
+    Computer  = Color3.fromRGB(255, 210, 60),   -- amarelo
 }
 
 --=====================================================================
@@ -46,17 +57,42 @@ local PALETTE = {
 local CONFIG = {
     ESP = {
         Enabled       = false,
+        -- Jogadores
+        ShowPlayers   = true,
         ShowBox       = true,
         ShowName      = true,
         ShowDistance  = true,
         ShowHighlight = true,
         ShowHealth    = true,
-        BoxMode       = "Full",  -- "Full" | "Corner"
-        ColorEnemy    = Color3.fromRGB(255, 255, 255),
-        ColorAlly     = Color3.fromRGB(130, 130, 140),
+        BoxMode       = "Full",
         Transparency  = 0.15,
         Thickness     = 1.5,
         MaxDistance   = 500,
+        -- Computadores
+        ShowComputers       = true,
+        ComputerBox         = true,
+        ComputerName        = true,
+        ComputerDistance    = true,
+        ComputerHighlight   = true,
+        ComputerMaxDistance = 1000,
+        -- Detecção da Fera
+        BeastNameMatch = {
+            "beast", "fera", "monster", "monstro", "killer"
+        },
+        BeastTeamMatch = {
+            "beast", "fera", "monster", "monstro", "killer"
+        },
+        BeastAttribute = "IsBeast",
+        -- Detecção de Computadores
+        ComputerNameMatch = {
+            "computer", "computador", "pc", "laptop", "objective",
+            "generator", "gerador", "terminal", "hack", "console",
+            "monitor", "screen", "tela", "panel", "painel"
+        },
+        ComputerTagMatch = {
+            "computer", "computador", "objective", "generator",
+            "terminal", "hackable", "hack", "objective_computer"
+        },
     },
     Speed = {
         Enabled = false,
@@ -66,7 +102,7 @@ local CONFIG = {
         Default = 16,
     },
     Keybind = {
-        ToggleESP   = Enum.KeyCode.RightControl,
+        ToggleESP = Enum.KeyCode.RightControl,
         ToggleSpeed = Enum.KeyCode.RightShift,
     },
 }
@@ -91,6 +127,76 @@ local function tween(obj, time, props, style, dir)
     return t
 end
 
+local function containsAny(str, list)
+    if not str then return false end
+    local lower = str:lower()
+    for _, kw in ipairs(list) do
+        if lower:find(kw:lower(), 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+--=====================================================================
+-- DETECÇÃO DA FERA
+--=====================================================================
+local function isBeast(plr)
+    local attr = plr:GetAttribute(CONFIG.ESP.BeastAttribute)
+    if attr == true then return true end
+
+    local char = plr.Character
+    if char then
+        if char:GetAttribute(CONFIG.ESP.BeastAttribute) == true then return true end
+        if containsAny(char.Name, CONFIG.ESP.BeastNameMatch) then return true end
+        for _, tag in ipairs(CollectionService:GetTags(char)) do
+            if containsAny(tag, CONFIG.ESP.BeastNameMatch) then return true end
+        end
+    end
+
+    for _, tag in ipairs(CollectionService:GetTags(plr)) do
+        if containsAny(tag, CONFIG.ESP.BeastNameMatch) then return true end
+    end
+
+    if containsAny(plr.Name, CONFIG.ESP.BeastNameMatch) then return true end
+
+    if plr.Team and containsAny(plr.Team.Name, CONFIG.ESP.BeastTeamMatch) then
+        return true
+    end
+
+    return false
+end
+
+local function getESPColor(plr)
+    if isBeast(plr) then return ESP_COLORS.Beast end
+    return ESP_COLORS.Ally
+end
+
+local function getRoleLabel(plr)
+    if isBeast(plr) then return "BEAST" end
+    return "SURVIVOR"
+end
+
+--=====================================================================
+-- DETECÇÃO DE COMPUTADORES
+--=====================================================================
+local function isComputer(inst)
+    if not inst or not inst.Parent then return false end
+    if inst:IsA("Player") then return false end
+
+    if containsAny(inst.Name, CONFIG.ESP.ComputerNameMatch) then
+        return true
+    end
+
+    for _, tag in ipairs(CollectionService:GetTags(inst)) do
+        if containsAny(tag, CONFIG.ESP.ComputerTagMatch) then
+            return true
+        end
+    end
+
+    return false
+end
+
 --=====================================================================
 -- LIMPEZA
 --=====================================================================
@@ -104,9 +210,13 @@ for _, plr in ipairs(Players:GetPlayers()) do
         if hl then hl:Destroy() end
     end
 end
+for _, inst in ipairs(Workspace:GetDescendants()) do
+    local hl = inst:FindFirstChild("MonoESP_Obj_HL")
+    if hl then hl:Destroy() end
+end
 
 --=====================================================================
--- ROOT GUI
+-- GUI PRINCIPAL
 --=====================================================================
 local ScreenGui = create("ScreenGui", {
     Name = "PremiumMonochromeUI",
@@ -116,27 +226,17 @@ local ScreenGui = create("ScreenGui", {
     Parent = UIParent,
 })
 
---=====================================================================
--- JANELA PRINCIPAL
---=====================================================================
 local Main = create("Frame", {
     Name = "Main",
-    Size = UDim2.new(0, 560, 0, 420),
-    Position = UDim2.new(0.5, -280, 0.5, -210),
+    Size = UDim2.new(0, 600, 0, 460),
+    Position = UDim2.new(0.5, -300, 0.5, -230),
     BackgroundColor3 = PALETTE.Bg0,
     BackgroundTransparency = 0.05,
     BorderSizePixel = 0,
     Parent = ScreenGui,
 })
 create("UICorner", { CornerRadius = UDim.new(0, 16), Parent = Main })
-
-local MainStroke = create("UIStroke", {
-    Color = PALETTE.Line,
-    Thickness = 1,
-    Transparency = 0.25,
-    Parent = Main,
-})
-
+create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.25, Parent = Main })
 create("UIGradient", {
     Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 22, 26)),
@@ -157,7 +257,6 @@ local TopBar = create("Frame", {
     Parent = Main,
 })
 create("UICorner", { CornerRadius = UDim.new(0, 16), Parent = TopBar })
-
 create("Frame", {
     Size = UDim2.new(1, -24, 0, 1),
     Position = UDim2.new(0, 12, 1, -1),
@@ -165,7 +264,6 @@ create("Frame", {
     BorderSizePixel = 0,
     Parent = TopBar,
 })
-
 create("TextLabel", {
     Size = UDim2.new(0, 26, 0, 26),
     Position = UDim2.new(0, 18, 0.5, -13),
@@ -176,9 +274,8 @@ create("TextLabel", {
     Font = Enum.Font.GothamBold,
     Parent = TopBar,
 })
-
 create("TextLabel", {
-    Size = UDim2.new(0, 300, 1, 0),
+    Size = UDim2.new(0, 320, 1, 0),
     Position = UDim2.new(0, 52, 0, 0),
     BackgroundTransparency = 1,
     Text = "MONOCHROME  •  5v1  •  TEST SUITE",
@@ -189,22 +286,16 @@ create("TextLabel", {
     Parent = TopBar,
 })
 
--- Status pill
 local StatusPill = create("Frame", {
-    Size = UDim2.new(0, 110, 0, 22),
-    Position = UDim2.new(1, -260, 0.5, -11),
+    Size = UDim2.new(0, 130, 0, 22),
+    Position = UDim2.new(1, -280, 0.5, -11),
     BackgroundColor3 = PALETTE.Bg2,
     BackgroundTransparency = 0.2,
     BorderSizePixel = 0,
     Parent = TopBar,
 })
 create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = StatusPill })
-local StatusStroke = create("UIStroke", {
-    Color = PALETTE.Line,
-    Thickness = 1,
-    Transparency = 0.4,
-    Parent = StatusPill,
-})
+local StatusStroke = create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.4, Parent = StatusPill })
 local StatusDot = create("Frame", {
     Size = UDim2.new(0, 6, 0, 6),
     Position = UDim2.new(0, 10, 0.5, -3),
@@ -225,7 +316,6 @@ local StatusText = create("TextLabel", {
     Parent = StatusPill,
 })
 
--- Botões de controle
 local function makeCtrlButton(text, xOff, hoverBg)
     local btn = create("TextButton", {
         Size = UDim2.new(0, 28, 0, 28),
@@ -271,12 +361,9 @@ local Content = create("Frame", {
     Parent = Main,
 })
 
---=====================================================================
--- MIN / REST / CLOSE
---=====================================================================
 local minimized = false
-local fullSize = UDim2.new(0, 560, 0, 420)
-local miniSize = UDim2.new(0, 560, 0, 48)
+local fullSize = UDim2.new(0, 600, 0, 460)
+local miniSize = UDim2.new(0, 600, 0, 48)
 
 MinBtn.MouseButton1Click:Connect(function()
     if minimized then return end
@@ -287,7 +374,7 @@ end)
 
 RestBtn.MouseButton1Click:Connect(function()
     if not minimized then
-        tween(Main, 0.35, { Position = UDim2.new(0.5, -280, 0.5, -210) }, Enum.EasingStyle.Quint)
+        tween(Main, 0.35, { Position = UDim2.new(0.5, -300, 0.5, -230) }, Enum.EasingStyle.Quint)
         return
     end
     minimized = false
@@ -301,6 +388,10 @@ CloseBtn.MouseButton1Click:Connect(function()
             local hl = plr.Character:FindFirstChild("MonoESP_HL")
             if hl then hl:Destroy() end
         end
+    end
+    for _, inst in ipairs(Workspace:GetDescendants()) do
+        local hl = inst:FindFirstChild("MonoESP_Obj_HL")
+        if hl then hl:Destroy() end
     end
     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum then hum.WalkSpeed = CONFIG.Speed.Default end
@@ -337,7 +428,7 @@ do
 end
 
 --=====================================================================
--- LAYOUT 3 COLUNAS
+-- LAYOUT
 --=====================================================================
 local function makeColumn(parent, xScale, xOff, width)
     return create("Frame", {
@@ -352,9 +443,6 @@ local Col1 = makeColumn(Content, 0,    0,   0.34)
 local Col2 = makeColumn(Content, 0.34, 6,   0.33)
 local Col3 = makeColumn(Content, 0.67, 12,  0.33)
 
---=====================================================================
--- SEÇÃO
---=====================================================================
 local function makeSection(parent, title, yOffset, height)
     local section = create("Frame", {
         Size = UDim2.new(1, 0, 0, height),
@@ -389,9 +477,7 @@ local function makeSection(parent, title, yOffset, height)
     return section
 end
 
---=====================================================================
 -- TOGGLE
---=====================================================================
 local function makeToggle(parent, label, yPos, initial, callback)
     local row = create("Frame", {
         Size = UDim2.new(1, -20, 0, 28),
@@ -403,7 +489,7 @@ local function makeToggle(parent, label, yPos, initial, callback)
         Size = UDim2.new(0.62, 0, 1, 0),
         BackgroundTransparency = 1,
         Text = label,
-        TextColor3 = PALETTE.TextDim,
+        TextColor3 = initial and PALETTE.Text or PALETTE.TextDim,
         TextSize = 11,
         Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -443,9 +529,7 @@ local function makeToggle(parent, label, yPos, initial, callback)
     return { set = set, get = function() return state end }
 end
 
---=====================================================================
 -- SLIDER
---=====================================================================
 local function makeSlider(parent, label, yPos, initial, minV, maxV, callback)
     local wrap = create("Frame", {
         Size = UDim2.new(1, -20, 0, 42),
@@ -543,9 +627,7 @@ local function makeSlider(parent, label, yPos, initial, minV, maxV, callback)
     }
 end
 
---=====================================================================
 -- TEXTBOX
---=====================================================================
 local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply)
     local wrap = create("Frame", {
         Size = UDim2.new(1, -20, 0, 52),
@@ -628,7 +710,6 @@ local function makeNumberInput(parent, label, yPos, initial, minV, maxV, onApply
         flash(Color3.fromRGB(120, 220, 160))
         if onApply then onApply(num) end
     end)
-
     return { setText = function(v) box.Text = tostring(v) end }
 end
 
@@ -636,19 +717,34 @@ end
 -- FORWARD DECLARATIONS
 --=====================================================================
 local tracked = {}
+local trackedObjects = {}  -- [Instance] = { hl, box, boxStroke, name, dist }
 local updateESPStyles
 local updateStatusPill
 local updateSpeed
 
 --=====================================================================
--- COLUNA 1 — ESP
+-- COLUNA 1 — ESP JOGADORES
 --=====================================================================
-local ESPPanel = makeSection(Col1, "ESP", 0, 260)
+local ESPPanel = makeSection(Col1, "ESP  •  JOGADORES", 0, 260)
 
 local espMainToggle = makeToggle(ESPPanel, "Ativar ESP", 36, CONFIG.ESP.Enabled, function(v)
     CONFIG.ESP.Enabled = v
     updateStatusPill()
+    if not v then
+        for _, data in pairs(tracked) do
+            if data.hl then data.hl.Enabled = false end
+            if data.box then data.box.Visible = false end
+            if data.name then data.name.Visible = false end
+            if data.role then data.role.Visible = false end
+            if data.dist then data.dist.Visible = false end
+            if data.hpBg then data.hpBg.Visible = false end
+            if data.corners then
+                for _, c in ipairs(data.corners) do c.Visible = false end
+            end
+        end
+    end
 end)
+
 makeToggle(ESPPanel, "Contorno (Highlight)", 72,  CONFIG.ESP.ShowHighlight, function(v) CONFIG.ESP.ShowHighlight = v; updateESPStyles() end)
 makeToggle(ESPPanel, "Caixa",                104, CONFIG.ESP.ShowBox,       function(v) CONFIG.ESP.ShowBox = v;       updateESPStyles() end)
 makeToggle(ESPPanel, "Nome + Papel",         136, CONFIG.ESP.ShowName,      function(v) CONFIG.ESP.ShowName = v;      updateESPStyles() end)
@@ -732,135 +828,73 @@ create("TextLabel", {
 })
 
 --=====================================================================
--- COLUNA 3 — PERSONALIZAÇÃO
+-- COLUNA 3 — COMPUTADORES + CORES
 --=====================================================================
-local CustomPanel = makeSection(Col3, "PERSONALIZAÇÃO", 0, 260)
+local CompPanel = makeSection(Col3, "ESP  •  COMPUTADORES", 0, 160)
 
-create("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 14),
-    Position = UDim2.new(0, 10, 0, 32),
-    BackgroundTransparency = 1,
-    Text = "CORES",
-    TextColor3 = PALETTE.TextMute,
-    TextSize = 9,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = CustomPanel,
-})
+makeToggle(CompPanel, "Ativar ESP Computadores", 36, CONFIG.ESP.ShowComputers, function(v)
+    CONFIG.ESP.ShowComputers = v
+    -- esconde tudo se off
+    if not v then
+        for _, data in pairs(trackedObjects) do
+            if data.hl then data.hl.Enabled = false end
+            if data.box then data.box.Visible = false end
+            if data.name then data.name.Visible = false end
+            if data.dist then data.dist.Visible = false end
+        end
+    end
+end)
+makeToggle(CompPanel, "Contorno",  72,  CONFIG.ESP.ComputerHighlight, function(v) CONFIG.ESP.ComputerHighlight = v end)
+makeToggle(CompPanel, "Caixa",     104, CONFIG.ESP.ComputerBox,       function(v) CONFIG.ESP.ComputerBox = v end)
+makeToggle(CompPanel, "Nome/Dist", 136, CONFIG.ESP.ComputerName,      function(v) CONFIG.ESP.ComputerName = v; CONFIG.ESP.ComputerDistance = v end)
 
-local beastSwatch = create("Frame", {
-    Size = UDim2.new(0, 14, 0, 14),
-    Position = UDim2.new(1, -30, 0, 32),
-    BackgroundColor3 = CONFIG.ESP.ColorEnemy,
-    BorderSizePixel = 0,
-    Parent = CustomPanel,
-})
-create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = beastSwatch })
+-- Painel de cores
+local ColorPanel = makeSection(Col3, "CORES  •  ESP", 170, 90)
 
-local allySwatch = create("Frame", {
-    Size = UDim2.new(0, 14, 0, 14),
-    Position = UDim2.new(1, -30, 0, 60),
-    BackgroundColor3 = CONFIG.ESP.ColorAlly,
-    BorderSizePixel = 0,
-    Parent = CustomPanel,
-})
-create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = allySwatch })
-
--- Labels das cores
-create("TextLabel", {
-    Size = UDim2.new(0.6, 0, 0, 20),
-    Position = UDim2.new(0, 10, 0, 29),
-    BackgroundTransparency = 1,
-    Text = "Fera (inimigo)",
-    TextColor3 = PALETTE.TextDim,
-    TextSize = 11,
-    Font = Enum.Font.GothamMedium,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = CustomPanel,
-})
-
-create("TextLabel", {
-    Size = UDim2.new(0.6, 0, 0, 20),
-    Position = UDim2.new(0, 10, 0, 57),
-    BackgroundTransparency = 1,
-    Text = "Aliados",
-    TextColor3 = PALETTE.TextDim,
-    TextSize = 11,
-    Font = Enum.Font.GothamMedium,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = CustomPanel,
-})
-
--- Botões de cor (presets monocromáticos)
-local function makeColorBtn(parent, xOff, yPos, color, onPick)
-    local btn = create("TextButton", {
-        Size = UDim2.new(0, 18, 0, 18),
-        Position = UDim2.new(0, xOff, 0, yPos),
-        BackgroundColor3 = color,
-        BorderSizePixel = 0,
-        Text = "",
-        AutoButtonColor = false,
+local function makeColorBadge(parent, y, color, labelText)
+    local row = create("Frame", {
+        Size = UDim2.new(1, -20, 0, 22),
+        Position = UDim2.new(0, 10, 0, y),
+        BackgroundTransparency = 1,
         Parent = parent,
     })
-    create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = btn })
-    local s = create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.4, Parent = btn })
-    btn.MouseEnter:Connect(function() tween(s, 0.15, { Transparency = 0 }) end)
-    btn.MouseLeave:Connect(function() tween(s, 0.15, { Transparency = 0.4 }) end)
-    btn.MouseButton1Click:Connect(function() onPick(color) end)
-    return btn
+    local sw = create("Frame", {
+        Size = UDim2.new(0, 12, 0, 12),
+        Position = UDim2.new(0, 0, 0.5, -6),
+        BackgroundColor3 = color,
+        BorderSizePixel = 0,
+        Parent = row,
+    })
+    create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = sw })
+    create("UIStroke", { Color = PALETTE.Line, Thickness = 1, Transparency = 0.5, Parent = sw })
+    create("TextLabel", {
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 20, 0, 0),
+        BackgroundTransparency = 1,
+        Text = labelText,
+        TextColor3 = PALETTE.TextDim,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = row,
+    })
 end
 
-local colorPresets = {
-    Color3.fromRGB(255, 255, 255),
-    Color3.fromRGB(200, 200, 205),
-    Color3.fromRGB(150, 150, 160),
-    Color3.fromRGB(110, 110, 120),
-    Color3.fromRGB(70, 70, 78),
-    Color3.fromRGB(30, 30, 35),
-}
-
-for i, c in ipairs(colorPresets) do
-    makeColorBtn(CustomPanel, 10 + (i-1) * 22, 84, c, function(color)
-        CONFIG.ESP.ColorEnemy = color
-        beastSwatch.BackgroundColor3 = color
-        updateESPStyles()
-    end)
-    makeColorBtn(CustomPanel, 10 + (i-1) * 22, 108, c, function(color)
-        CONFIG.ESP.ColorAlly = color
-        allySwatch.BackgroundColor3 = color
-        updateESPStyles()
-    end)
-end
-
-makeSlider(CustomPanel, "Transparência", 140,
-    1 - CONFIG.ESP.Transparency, 0, 1,
-    function(v)
-        CONFIG.ESP.Transparency = 1 - v
-        updateESPStyles()
-    end
-)
-
-makeSlider(CustomPanel, "Espessura", 186,
-    CONFIG.ESP.Thickness, 0.5, 4,
-    function(v)
-        CONFIG.ESP.Thickness = v
-        updateESPStyles()
-    end
-)
+makeColorBadge(ColorPanel, 36, ESP_COLORS.Ally,     "Aliado — Verde")
+makeColorBadge(ColorPanel, 58, ESP_COLORS.Beast,    "Fera — Vermelho")
+makeColorBadge(ColorPanel, 80, ESP_COLORS.Computer, "Computador — Amarelo")
 
 --=====================================================================
 -- STATUS PILL
 --=====================================================================
 function updateStatusPill()
-    local any = CONFIG.ESP.Enabled or CONFIG.Speed.Enabled
-    local label = "OFF"
-    if CONFIG.ESP.Enabled and CONFIG.Speed.Enabled then
-        label = "ESP • SPD"
-    elseif CONFIG.ESP.Enabled then
-        label = "ESP"
-    elseif CONFIG.Speed.Enabled then
-        label = "SPEED"
-    end
+    local any = CONFIG.ESP.Enabled or CONFIG.Speed.Enabled or CONFIG.ESP.ShowComputers
+    local parts = {}
+    if CONFIG.ESP.Enabled then table.insert(parts, "PLR") end
+    if CONFIG.ESP.ShowComputers then table.insert(parts, "PC") end
+    if CONFIG.Speed.Enabled then table.insert(parts, "SPD") end
+    local label = #parts > 0 and table.concat(parts, " • ") or "OFF"
+
     StatusText.Text = label
     tween(StatusDot, 0.25, { BackgroundColor3 = any and PALETTE.White or PALETTE.AccentOff })
     tween(StatusText, 0.25, { TextColor3 = any and PALETTE.Text or PALETTE.TextDim })
@@ -903,42 +937,19 @@ local ESPOverlay = create("ScreenGui", {
 })
 
 --=====================================================================
--- HELPERS ESP
+-- BUILD ESP JOGADOR
 --=====================================================================
-local function getESPColor(plr)
-    -- Time inimigo (Fera) → destaque branco
-    -- Aliados → cinza
-    local teamName = plr.Team and plr.Team.Name or "Survivors"
-    local myTeamName = LocalPlayer.Team and LocalPlayer.Team.Name or "Survivors"
-    if teamName == myTeamName then
-        return CONFIG.ESP.ColorAlly
-    end
-    return CONFIG.ESP.ColorEnemy
-end
-
-local function getRoleLabel(plr)
-    -- Etiqueta simples baseada no nome do time
-    if plr.Team then
-        return plr.Team.Name:upper()
-    end
-    return "?"
-end
-
 local function destroyESP(plr)
     local data = tracked[plr]
     if not data then return end
     for _, obj in pairs(data) do
-        if typeof(obj) == "Instance" and obj.Parent then
-            obj:Destroy()
-        end
+        if typeof(obj) == "Instance" and obj.Parent then obj:Destroy() end
     end
     tracked[plr] = nil
 end
 
 local function buildESP(plr)
     destroyESP(plr)
-
-    -- Highlight
     local char = plr.Character
     if not char then return end
 
@@ -954,7 +965,6 @@ local function buildESP(plr)
     hl.Adornee = char
     hl.Parent = char
 
-    -- Caixa
     local box = create("Frame", {
         Name = "MonoESP_Box",
         BackgroundTransparency = 1,
@@ -962,7 +972,6 @@ local function buildESP(plr)
         Visible = false,
         Parent = ESPOverlay,
     })
-
     local boxStroke = create("UIStroke", {
         Color = color,
         Thickness = CONFIG.ESP.Thickness,
@@ -970,7 +979,6 @@ local function buildESP(plr)
         Parent = box,
     })
 
-    -- Cantos da caixa (4 mini strokes)
     local corners = {}
     for i = 1, 4 do
         local c = create("Frame", {
@@ -983,9 +991,7 @@ local function buildESP(plr)
         corners[i] = c
     end
 
-    -- Nome
     local nameLbl = create("TextLabel", {
-        Name = "MonoESP_Name",
         BackgroundTransparency = 1,
         Text = plr.Name,
         TextColor3 = color,
@@ -1000,9 +1006,7 @@ local function buildESP(plr)
         Parent = ESPOverlay,
     })
 
-    -- Papel (BEAST / SURVIVOR)
     local roleLbl = create("TextLabel", {
-        Name = "MonoESP_Role",
         BackgroundTransparency = 1,
         Text = getRoleLabel(plr),
         TextColor3 = color,
@@ -1017,9 +1021,7 @@ local function buildESP(plr)
         Parent = ESPOverlay,
     })
 
-    -- Distância
     local distLbl = create("TextLabel", {
-        Name = "MonoESP_Dist",
         BackgroundTransparency = 1,
         Text = "0m",
         TextColor3 = color,
@@ -1034,9 +1036,7 @@ local function buildESP(plr)
         Parent = ESPOverlay,
     })
 
-    -- Barra de vida (fundo + frente)
     local hpBg = create("Frame", {
-        Name = "MonoESP_HpBg",
         BackgroundColor3 = Color3.fromRGB(20, 20, 22),
         BackgroundTransparency = 0.35,
         BorderSizePixel = 0,
@@ -1046,7 +1046,6 @@ local function buildESP(plr)
     create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = hpBg })
 
     local hpFg = create("Frame", {
-        Name = "MonoESP_HpFg",
         BackgroundColor3 = color,
         BackgroundTransparency = CONFIG.ESP.Transparency,
         BorderSizePixel = 0,
@@ -1056,20 +1055,91 @@ local function buildESP(plr)
     create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = hpFg })
 
     tracked[plr] = {
-        hl = hl,
-        box = box,
-        boxStroke = boxStroke,
-        corners = corners,
-        name = nameLbl,
-        role = roleLbl,
-        dist = distLbl,
-        hpBg = hpBg,
-        hpFg = hpFg,
+        hl = hl, box = box, boxStroke = boxStroke, corners = corners,
+        name = nameLbl, role = roleLbl, dist = distLbl,
+        hpBg = hpBg, hpFg = hpFg,
     }
 end
 
 --=====================================================================
--- UPDATE VISUAL DO ESP
+-- BUILD ESP COMPUTADOR
+--=====================================================================
+local function destroyObjESP(inst)
+    local data = trackedObjects[inst]
+    if not data then return end
+    for _, obj in pairs(data) do
+        if typeof(obj) == "Instance" and obj.Parent then obj:Destroy() end
+    end
+    trackedObjects[inst] = nil
+end
+
+local function buildObjESP(inst)
+    destroyObjESP(inst)
+
+    local color = ESP_COLORS.Computer
+
+    -- Highlight
+    local hl = Instance.new("Highlight")
+    hl.Name = "MonoESP_Obj_HL"
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.FillTransparency = 1
+    hl.OutlineTransparency = CONFIG.ESP.Transparency
+    hl.FillColor = color
+    hl.OutlineColor = color
+    hl.Adornee = inst
+    hl.Parent = inst
+
+    local box = create("Frame", {
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Visible = false,
+        Parent = ESPOverlay,
+    })
+    local boxStroke = create("UIStroke", {
+        Color = color,
+        Thickness = CONFIG.ESP.Thickness,
+        Transparency = CONFIG.ESP.Transparency,
+        Parent = box,
+    })
+
+    local nameLbl = create("TextLabel", {
+        BackgroundTransparency = 1,
+        Text = "◆ PC",
+        TextColor3 = color,
+        TextTransparency = CONFIG.ESP.Transparency,
+        TextSize = 12,
+        Font = Enum.Font.GothamBold,
+        TextStrokeTransparency = 0.4,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.new(0, 100, 0, 14),
+        AnchorPoint = Vector2.new(0.5, 1),
+        Visible = false,
+        Parent = ESPOverlay,
+    })
+
+    local distLbl = create("TextLabel", {
+        BackgroundTransparency = 1,
+        Text = "0m",
+        TextColor3 = color,
+        TextTransparency = CONFIG.ESP.Transparency,
+        TextSize = 11,
+        Font = Enum.Font.GothamMedium,
+        TextStrokeTransparency = 0.4,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.new(0, 80, 0, 12),
+        AnchorPoint = Vector2.new(0.5, 0),
+        Visible = false,
+        Parent = ESPOverlay,
+    })
+
+    trackedObjects[inst] = {
+        hl = hl, box = box, boxStroke = boxStroke,
+        name = nameLbl, dist = distLbl,
+    }
+end
+
+--=====================================================================
+-- UPDATE DE ESTILO (cores/espessura/transparência)
 --=====================================================================
 function updateESPStyles()
     for plr, data in pairs(tracked) do
@@ -1085,26 +1155,43 @@ function updateESPStyles()
             data.boxStroke.Thickness = CONFIG.ESP.Thickness
             data.boxStroke.Transparency = CONFIG.ESP.Transparency
         end
-        if data.name then
-            data.name.TextColor3 = color
-            data.name.TextTransparency = CONFIG.ESP.Transparency
-        end
-        if data.role then
-            data.role.TextColor3 = color
-            data.role.TextTransparency = math.min(1, CONFIG.ESP.Transparency + 0.15)
-        end
-        if data.dist then
-            data.dist.TextColor3 = color
-            data.dist.TextTransparency = CONFIG.ESP.Transparency
-        end
-        if data.hpFg then
-            data.hpFg.BackgroundColor3 = color
-            data.hpFg.BackgroundTransparency = CONFIG.ESP.Transparency
-        end
+        if data.name then data.name.TextColor3 = color; data.name.TextTransparency = CONFIG.ESP.Transparency end
+        if data.role then data.role.TextColor3 = color; data.role.TextTransparency = math.min(1, CONFIG.ESP.Transparency + 0.15) end
+        if data.dist then data.dist.TextColor3 = color; data.dist.TextTransparency = CONFIG.ESP.Transparency end
+        if data.hpFg then data.hpFg.BackgroundColor3 = color; data.hpFg.BackgroundTransparency = CONFIG.ESP.Transparency end
         if data.corners then
             for _, c in ipairs(data.corners) do
                 c.BackgroundColor3 = color
                 c.BackgroundTransparency = CONFIG.ESP.Transparency
+            end
+        end
+    end
+
+    for _, data in pairs(trackedObjects) do
+        if data.boxStroke then
+            data.boxStroke.Color = ESP_COLORS.Computer
+            data.boxStroke.Thickness = CONFIG.ESP.Thickness
+            data.boxStroke.Transparency = CONFIG.ESP.Transparency
+        end
+        if data.hl then
+            data.hl.FillColor = ESP_COLORS.Computer
+            data.hl.OutlineColor = ESP_COLORS.Computer
+            data.hl.OutlineTransparency = CONFIG.ESP.Transparency
+        end
+        if data.name then data.name.TextColor3 = ESP_COLORS.Computer; data.name.TextTransparency = CONFIG.ESP.Transparency end
+        if data.dist then data.dist.TextColor3 = ESP_COLORS.Computer; data.dist.TextTransparency = CONFIG.ESP.Transparency end
+    end
+end
+
+--=====================================================================
+-- RASTREIO DE COMPUTADORES
+--=====================================================================
+local function scanComputers()
+    if not CONFIG.ESP.ShowComputers then return end
+    for _, inst in ipairs(Workspace:GetDescendants()) do
+        if isComputer(inst) then
+            if not trackedObjects[inst] then
+                buildObjESP(inst)
             end
         end
     end
@@ -1114,190 +1201,255 @@ end
 -- PLAYER EVENTS
 --=====================================================================
 local function onPlayerAdded(plr)
-    plr.CharacterAdded:Connect(function(char)
-        if CONFIG.ESP.Enabled then
-            task.wait(0.3)
-            buildESP(plr)
-        end
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.3)
+        if CONFIG.ESP.Enabled then buildESP(plr) end
     end)
-    if plr.Character and CONFIG.ESP.Enabled then
-        buildESP(plr)
-    end
+    if plr.Character and CONFIG.ESP.Enabled then buildESP(plr) end
 end
 
-for _, plr in ipairs(Players:GetPlayers()) do
-    onPlayerAdded(plr)
-end
+for _, plr in ipairs(Players:GetPlayers()) do onPlayerAdded(plr) end
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(destroyESP)
 
 --=====================================================================
--- LOOP DE ATUALIZAÇÃO DO ESP (RenderStepped)
+-- LOOP PRINCIPAL
 --=====================================================================
-RunService.RenderStepped:Connect(function()
-    if not CONFIG.ESP.Enabled then
-        -- esconde tudo
-        for _, data in pairs(tracked) do
-            if data.box then data.box.Visible = false end
-            if data.name then data.name.Visible = false end
-            if data.role then data.role.Visible = false end
-            if data.dist then data.dist.Visible = false end
-            if data.hpBg then data.hpBg.Visible = false end
-            if data.corners then
-                for _, c in ipairs(data.corners) do c.Visible = false end
-            end
-        end
-        return
+local scanTimer = 0
+RunService.RenderStepped:Connect(function(dt)
+    -- Rescan de computadores a cada 1 segundo
+    scanTimer = scanTimer + dt
+    if scanTimer >= 1 then
+        scanTimer = 0
+        scanComputers()
     end
 
     local myPos = Camera.CFrame.Position
 
-    for plr, data in pairs(tracked) do
-        local char = plr.Character
-        if not char or not char.Parent then
-            destroyESP(plr)
-            continue
+    -- ====== JOGADORES ======
+    if CONFIG.ESP.Enabled then
+        for plr, data in pairs(tracked) do
+            local char = plr.Character
+            if not char or not char.Parent then destroyESP(plr); continue end
+
+            local hrp  = char:FindFirstChild("HumanoidRootPart")
+            local head = char:FindFirstChild("Head")
+            local hum  = char:FindFirstChildOfClass("Humanoid")
+
+            local hidden = false
+            if not (hrp and head and hum) or hum.Health <= 0 then hidden = true end
+            if not hidden then
+                local dist = (hrp.Position - myPos).Magnitude
+                if dist > CONFIG.ESP.MaxDistance then hidden = true end
+            end
+
+            if hidden then
+                if data.box then data.box.Visible = false end
+                if data.name then data.name.Visible = false end
+                if data.role then data.role.Visible = false end
+                if data.dist then data.dist.Visible = false end
+                if data.hpBg then data.hpBg.Visible = false end
+                if data.corners then for _, c in ipairs(data.corners) do c.Visible = false end end
+                if data.hl then data.hl.Enabled = false end
+                continue
+            end
+
+            -- Highlight (ligado por config)
+            if data.hl then
+                data.hl.Enabled = CONFIG.ESP.ShowHighlight
+            end
+
+            local headPos, onHead = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+            local footPos, onFoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+
+            if not onHead or not onFoot then
+                if data.box then data.box.Visible = false end
+                if data.name then data.name.Visible = false end
+                if data.role then data.role.Visible = false end
+                if data.dist then data.dist.Visible = false end
+                if data.hpBg then data.hpBg.Visible = false end
+                if data.corners then for _, c in ipairs(data.corners) do c.Visible = false end end
+                continue
+            end
+
+            local topX, topY = headPos.X, headPos.Y
+            local botX, botY = footPos.X, footPos.Y
+            local boxHeight = math.abs(botY - topY)
+            local boxWidth  = boxHeight * 0.55
+            local boxX = (topX + botX) / 2 - boxWidth / 2
+            local boxY = math.min(topY, botY)
+
+            if CONFIG.ESP.ShowBox and CONFIG.ESP.BoxMode == "Full" then
+                data.box.Visible = true
+                data.box.Position = UDim2.new(0, boxX, 0, boxY)
+                data.box.Size = UDim2.new(0, boxWidth, 0, boxHeight)
+                data.boxStroke.Enabled = true
+                for _, c in ipairs(data.corners) do c.Visible = false end
+            elseif CONFIG.ESP.ShowBox and CONFIG.ESP.BoxMode == "Corner" then
+                data.box.Visible = false
+                data.boxStroke.Enabled = false
+                local cLen = math.max(6, math.min(14, boxWidth * 0.25))
+                local t = CONFIG.ESP.Thickness
+                local positions = {
+                    {UDim2.new(0, boxX, 0, boxY),                     UDim2.new(0, cLen, 0, t)},
+                    {UDim2.new(0, boxX + boxWidth - cLen, 0, boxY),   UDim2.new(0, cLen, 0, t)},
+                    {UDim2.new(0, boxX, 0, boxY + boxHeight - t),     UDim2.new(0, cLen, 0, t)},
+                    {UDim2.new(0, boxX + boxWidth - cLen, 0, boxY + boxHeight - t), UDim2.new(0, cLen, 0, t)},
+                }
+                for i, c in ipairs(data.corners) do
+                    c.Visible = true
+                    c.Position = positions[i][1]
+                    c.Size = positions[i][2]
+                end
+            else
+                data.box.Visible = false
+                data.boxStroke.Enabled = false
+                for _, c in ipairs(data.corners) do c.Visible = false end
+            end
+
+            if CONFIG.ESP.ShowName then
+                data.name.Visible = true
+                data.name.Position = UDim2.new(0, topX, 0, boxY - 4)
+                data.name.Text = plr.Name
+                data.role.Visible = true
+                data.role.Position = UDim2.new(0, topX, 0, boxY - 16)
+                data.role.Text = getRoleLabel(plr)
+            else
+                data.name.Visible = false
+                data.role.Visible = false
+            end
+
+            if CONFIG.ESP.ShowDistance then
+                local dist = (hrp.Position - myPos).Magnitude
+                data.dist.Visible = true
+                data.dist.Position = UDim2.new(0, topX, 0, boxY + boxHeight + 2)
+                data.dist.Text = string.format("%dm", math.floor(dist))
+            else
+                data.dist.Visible = false
+            end
+
+            if CONFIG.ESP.ShowHealth then
+                data.hpBg.Visible = true
+                local hpRatio = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+                data.hpBg.Position = UDim2.new(0, boxX - 8, 0, boxY)
+                data.hpBg.Size = UDim2.new(0, 3, 0, boxHeight)
+                data.hpFg.Size = UDim2.new(1, 0, hpRatio, 0)
+                data.hpFg.Position = UDim2.new(0, 0, 1 - hpRatio, 0)
+            else
+                data.hpBg.Visible = false
+            end
         end
-
-        local hrp  = char:FindFirstChild("HumanoidRootPart")
-        local head = char:FindFirstChild("Head")
-        local hum  = char:FindFirstChildOfClass("Humanoid")
-
-        if not (hrp and head and hum) or hum.Health <= 0 then
+    else
+        -- esconde todos
+        for _, data in pairs(tracked) do
+            if data.hl then data.hl.Enabled = false end
             if data.box then data.box.Visible = false end
             if data.name then data.name.Visible = false end
             if data.role then data.role.Visible = false end
             if data.dist then data.dist.Visible = false end
             if data.hpBg then data.hpBg.Visible = false end
-            if data.corners then
-                for _, c in ipairs(data.corners) do c.Visible = false end
-            end
-            continue
+            if data.corners then for _, c in ipairs(data.corners) do c.Visible = false end end
         end
+    end
 
-        -- Distância
-        local dist = (hrp.Position - myPos).Magnitude
-        if dist > CONFIG.ESP.MaxDistance then
+    -- ====== COMPUTADORES ======
+    if CONFIG.ESP.ShowComputers then
+        for inst, data in pairs(trackedObjects) do
+            if not inst.Parent then destroyObjESP(inst); continue end
+
+            local pos = inst:IsA("BasePart") and inst.Position or nil
+            if not pos then
+                local pp = inst:FindFirstChildWhichIsA("BasePart", true)
+                if pp then pos = pp.Position end
+            end
+
+            if not pos then
+                if data.box then data.box.Visible = false end
+                if data.name then data.name.Visible = false end
+                if data.dist then data.dist.Visible = false end
+                if data.hl then data.hl.Enabled = false end
+                continue
+            end
+
+            local dist = (pos - myPos).Magnitude
+            if dist > CONFIG.ESP.ComputerMaxDistance then
+                if data.box then data.box.Visible = false end
+                if data.name then data.name.Visible = false end
+                if data.dist then data.dist.Visible = false end
+                if data.hl then data.hl.Enabled = false end
+                continue
+            end
+
+            local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
+            if not onScreen then
+                if data.box then data.box.Visible = false end
+                if data.name then data.name.Visible = false end
+                if data.dist then data.dist.Visible = false end
+                if data.hl then data.hl.Enabled = false end
+                continue
+            end
+
+            -- Highlight
+            if data.hl then
+                data.hl.Enabled = CONFIG.ESP.ComputerHighlight
+            end
+
+            -- Caixa (tamanho fixo baseado em distância)
+            if CONFIG.ESP.ComputerBox then
+                local size = math.clamp(3000 / math.max(dist, 1), 14, 60)
+                data.box.Visible = true
+                data.box.Position = UDim2.new(0, screenPos.X - size/2, 0, screenPos.Y - size/2)
+                data.box.Size = UDim2.new(0, size, 0, size)
+                data.boxStroke.Enabled = true
+            else
+                data.box.Visible = false
+                data.boxStroke.Enabled = false
+            end
+
+            -- Nome + Distância
+            if CONFIG.ESP.ComputerName then
+                data.name.Visible = true
+                data.name.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 22)
+                data.name.Text = "◆ " .. inst.Name
+            else
+                data.name.Visible = false
+            end
+
+            if CONFIG.ESP.ComputerDistance then
+                data.dist.Visible = true
+                data.dist.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y + 18)
+                data.dist.Text = string.format("%dm", math.floor(dist))
+            else
+                data.dist.Visible = false
+            end
+        end
+    else
+        for _, data in pairs(trackedObjects) do
+            if data.hl then data.hl.Enabled = false end
             if data.box then data.box.Visible = false end
             if data.name then data.name.Visible = false end
-            if data.role then data.role.Visible = false end
             if data.dist then data.dist.Visible = false end
-            if data.hpBg then data.hpBg.Visible = false end
-            if data.corners then
-                for _, c in ipairs(data.corners) do c.Visible = false end
-            end
-            continue
-        end
-
-        -- Projeção dos pontos
-        local headPos, onHead = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
-        local footPos, onFoot = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
-
-        if not onHead or not onFoot then
-            if data.box then data.box.Visible = false end
-            if data.name then data.name.Visible = false end
-            if data.role then data.role.Visible = false end
-            if data.dist then data.dist.Visible = false end
-            if data.hpBg then data.hpBg.Visible = false end
-            if data.corners then
-                for _, c in ipairs(data.corners) do c.Visible = false end
-            end
-            continue
-        end
-
-        local topX, topY = headPos.X, headPos.Y
-        local botX, botY = footPos.X, footPos.Y
-
-        local boxHeight = math.abs(botY - topY)
-        local boxWidth  = boxHeight * 0.55
-
-        local boxX = (topX + botX) / 2 - boxWidth / 2
-        local boxY = math.min(topY, botY)
-
-        -- BOX FULL
-        if CONFIG.ESP.ShowBox and CONFIG.ESP.BoxMode == "Full" then
-            data.box.Visible = true
-            data.box.Position = UDim2.new(0, boxX, 0, boxY)
-            data.box.Size = UDim2.new(0, boxWidth, 0, boxHeight)
-            data.boxStroke.Enabled = true
-            for _, c in ipairs(data.corners) do c.Visible = false end
-        -- BOX CORNERS
-        elseif CONFIG.ESP.ShowBox and CONFIG.ESP.BoxMode == "Corner" then
-            data.box.Visible = false
-            data.boxStroke.Enabled = false
-            local cLen = math.max(6, math.min(14, boxWidth * 0.25))
-            local t = CONFIG.ESP.Thickness
-
-            -- [1] TL  [2] TR  [3] BL  [4] BR
-            local positions = {
-                {UDim2.new(0, boxX, 0, boxY),                     UDim2.new(0, cLen, 0, t)},              -- TL horizontal
-                {UDim2.new(0, boxX + boxWidth - cLen, 0, boxY),   UDim2.new(0, cLen, 0, t)},              -- TR horizontal
-                {UDim2.new(0, boxX, 0, boxY + boxHeight - t),     UDim2.new(0, cLen, 0, t)},              -- BL horizontal
-                {UDim2.new(0, boxX + boxWidth - cLen, 0, boxY + boxHeight - t), UDim2.new(0, cLen, 0, t)},  -- BR horizontal
-            }
-            for i, c in ipairs(data.corners) do
-                c.Visible = true
-                c.Position = positions[i][1]
-                c.Size = positions[i][2]
-            end
-        else
-            data.box.Visible = false
-            data.boxStroke.Enabled = false
-            for _, c in ipairs(data.corners) do c.Visible = false end
-        end
-
-        -- NAME
-        if CONFIG.ESP.ShowName then
-            data.name.Visible = true
-            data.name.Position = UDim2.new(0, topX, 0, boxY - 4)
-            data.name.Text = plr.Name
-        else
-            data.name.Visible = false
-        end
-
-        -- ROLE LABEL
-        if CONFIG.ESP.ShowName then
-            data.role.Visible = true
-            data.role.Position = UDim2.new(0, topX, 0, boxY - 16)
-            data.role.Text = getRoleLabel(plr)
-        else
-            data.role.Visible = false
-        end
-
-        -- DISTANCE
-        if CONFIG.ESP.ShowDistance then
-            data.dist.Visible = true
-            data.dist.Position = UDim2.new(0, topX, 0, boxY + boxHeight + 2)
-            data.dist.Text = string.format("%dm", math.floor(dist))
-        else
-            data.dist.Visible = false
-        end
-
-        -- HEALTH BAR
-        if CONFIG.ESP.ShowHealth then
-            data.hpBg.Visible = true
-            local hpRatio = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
-            data.hpBg.Position = UDim2.new(0, boxX - 8, 0, boxY)
-            data.hpBg.Size = UDim2.new(0, 3, 0, boxHeight)
-            data.hpFg.Size = UDim2.new(1, 0, hpRatio, 0)
-            data.hpFg.Position = UDim2.new(0, 0, 1 - hpRatio, 0)
-        else
-            data.hpBg.Visible = false
         end
     end
 end)
 
 --=====================================================================
--- REBUILD quando ESP ativado
+-- GARANTIR BUILD QUANDO ATIVADO
 --=====================================================================
-local espEnabledConn
-espEnabledConn = RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function()
     if CONFIG.ESP.Enabled then
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and plr.Character then
-                if not tracked[plr] or tracked[plr].hl == nil or tracked[plr].hl.Parent ~= plr.Character then
+                if not tracked[plr] or not tracked[plr].hl or tracked[plr].hl.Parent ~= plr.Character then
                     buildESP(plr)
                 end
+            end
+        end
+    end
+    if CONFIG.ESP.ShowComputers then
+        for inst, data in pairs(trackedObjects) do
+            if not inst.Parent then
+                destroyObjESP(inst)
             end
         end
     end
@@ -1314,5 +1466,12 @@ UserInputService.InputBegan:Connect(function(input, gp)
         speedMainToggle.set(not speedMainToggle.get())
     end
 end)
+
+--=====================================================================
+-- BOOT
+--=====================================================================
+scanComputers()
+updateStatusPill()
+updateSpeed()
 
 print("[MonoChrome Test Suite] Carregado. UIParent:", UIParent:GetFullName())
