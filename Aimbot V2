@@ -1,6 +1,5 @@
 --=====================================================================
--- MONOCHROME PRO v2  •  ESP (INIMIGO) + AIMBOT  •  PT-BR / EN
--- Aimbot com "gruda" suave baseado em Alpha-Lerp puro
+-- MONOCHROME PRO v3  •  ESP (INIMIGO) + AIMBOT (toggle)  •  PT / EN
 --=====================================================================
 
 local Players           = game:GetService("Players")
@@ -53,12 +52,12 @@ local T = {
         espDist     = "Distância",
         espHp       = "Vida",
         espNote     = "Mostra apenas jogadores de\noutro time (vermelho).",
-        secAim      = "AIMBOT  •  (RAlt segura)",
+        secAim      = "AIMBOT  •  AUTO",
         aimEnable   = "Ativar Aimbot",
         aimFov      = "Mostrar FOV",
         aimSmooth   = "Suavidade",
         aimFovInput = "Raio do FOV (10 - 1000)",
-        aimNote     = "Segure RAlt para mirar.\nSó mira em inimigos.",
+        aimNote     = "Mira automaticamente em\ninimigos dentro do FOV.",
         apply       = "APLICAR",
     },
     en = {
@@ -73,12 +72,12 @@ local T = {
         espDist     = "Distance",
         espHp       = "Health",
         espNote     = "Shows only players from\nother teams (red).",
-        secAim      = "AIMBOT  •  (hold RAlt)",
+        secAim      = "AIMBOT  •  AUTO",
         aimEnable   = "Enable Aimbot",
         aimFov      = "Show FOV",
         aimSmooth   = "Smoothness",
         aimFovInput = "FOV radius (10 - 1000)",
-        aimNote     = "Hold RAlt to aim.\nOnly targets enemies.",
+        aimNote     = "Auto aims at enemies\ninside the FOV.",
         apply       = "APPLY",
     },
 }
@@ -104,7 +103,6 @@ local CFG = {
     },
     AIM = {
         Enabled = false,
-        Holding = false,
         Smooth = 0.25,
         MaxDist = 500,
         Part = "Head",
@@ -139,7 +137,7 @@ local function tw(obj, time, props, style, dir)
 end
 
 --=====================================================================
--- DETECÇÃO DE INIMIGO
+-- DETECÇÃO
 --=====================================================================
 local function isEnemy(plr)
     if plr == LP then return false end
@@ -225,7 +223,6 @@ local titleLbl = new("TextLabel", {
     Parent = top,
 })
 
--- Botão idioma
 local langBtn = new("TextButton", {
     Size = UDim2.new(0, 36, 0, 24),
     Position = UDim2.new(1, -270, 0.5, -12),
@@ -250,7 +247,6 @@ langBtn.MouseLeave:Connect(function()
     tw(langStroke, 0.15, { Transparency = 0.5 })
 end)
 
--- Status
 local status = new("Frame", {
     Size = UDim2.new(0, 120, 0, 26),
     Position = UDim2.new(1, -230, 0.5, -13),
@@ -667,7 +663,7 @@ toggle(pAIM, "aimFov", 74, CFG.FOV.Visible, function(v)
     CFG.FOV.Visible = v
     fovGui.Enabled = v
 end)
-slider(pAIM, "aimSmooth", 102, CFG.AIM.Smooth, 0.05, 1, function(v)
+slider(pAIM, "aimSmooth", 102, CFG.AIM.Smooth, 0, 1, function(v)
     CFG.AIM.Smooth = v
 end)
 numInput(pAIM, "aimFovInput", 148, CFG.FOV.Radius, 10, 1000, function(v)
@@ -859,11 +855,10 @@ local function findTarget()
 end
 
 --=====================================================================
--- AIMBOT — MIRA SUAVE (mesma fórmula do Premium Aim)
+-- AIMBOT — MIRA SUAVE (gruda firme)
 --=====================================================================
 RunService.RenderStepped:Connect(function(dt)
     if not CFG.AIM.Enabled then return end
-    if not CFG.AIM.Holding then return end
 
     local target = findTarget()
     if not target then return end
@@ -871,7 +866,7 @@ RunService.RenderStepped:Connect(function(dt)
     local camPos = Camera.CFrame.Position
     local desired = CFrame.new(camPos, target.Position)
 
-    -- Fórmula do Premium Aim (gruda firme)
+    -- Fórmula original que gruda
     local alpha = 1 - math.pow(
         1 - math.clamp(1 - CFG.AIM.Smooth, 0.05, 0.95),
         dt * 60
@@ -887,14 +882,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
     if input.KeyCode == CFG.Keys.ESP then
         espToggle.set(not espToggle.get())
     elseif input.KeyCode == CFG.Keys.AIM then
-        CFG.AIM.Holding = true
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == CFG.Keys.AIM then
-        CFG.AIM.Holding = false
+        aimToggle.set(not aimToggle.get())
     end
 end)
 
@@ -1009,4 +997,4 @@ end)
 -- BOOT
 --=====================================================================
 updateStatus()
-print("[MonoChrome PRO v2] Carregado. Inimigo = time diferente do seu.")
+print("[MonoChrome PRO v3] Carregado. Aimbot: toggle no menu ou RAlt.")
