@@ -1,8 +1,10 @@
 --[[
     ═══════════════════════════════════════════════════════════════
-    ESP SECURITY SUITE v1.1 — XENO EDITION
+    ESP SECURITY SUITE v1.2 — XENO EDITION
     ─────────────────────────────────────────────────────────────
-    Versão sem Drawing API — usa apenas Frames do Roblox.
+    ✓ Toggle individual por elemento (Box, Nome, Vida, Distância, etc.)
+    ✓ Hotkeys configuráveis
+    ✓ UI em Frames (sem Drawing API)
     Uso: TESTE DE SEGURANÇA no SEU PRÓPRIO servidor.
     ═══════════════════════════════════════════════════════════════
 --]]
@@ -35,7 +37,6 @@ local Theme = {
     text_secondary = Color3.fromRGB(160, 160, 175),
     text_muted   = Color3.fromRGB(100, 100, 115),
 }
-
 local FONTS = {
     title   = Enum.Font.GothamBold,
     heading = Enum.Font.GothamSemibold,
@@ -46,18 +47,30 @@ local FONTS = {
 -- CONFIG
 --==============================================================
 local Config = {
+    -- Master
     enabled        = false,
+    
+    -- Toggles individuais
     esp_box        = true,
     esp_name       = true,
     esp_health     = true,
     esp_distance   = true,
     esp_tracer     = true,
     esp_skeleton   = false,
+    esp_arrow      = false,
+    
+    -- Filtros
     team_check     = true,
+    visible_only   = false,
+    
+    -- Aparência
     box_thickness  = 1,
     name_size      = 13,
     max_distance   = 800,
     refresh_rate   = 60,
+    hp_bar_width   = 3,
+    
+    -- Cores
     color_enemy    = Color3.fromRGB(255, 80, 80),
     color_team     = Color3.fromRGB(80, 200, 255),
     color_health   = Color3.fromRGB(87, 242, 135),
@@ -69,6 +82,20 @@ local Config = {
 }
 
 --==============================================================
+-- HOTKEYS (mapeamento)
+--==============================================================
+local Hotkeys = {
+    toggleMenu   = Enum.KeyCode.Insert,
+    toggleMaster = Enum.KeyCode.RightShift,
+    toggleBox    = Enum.KeyCode.F1,
+    toggleName   = Enum.KeyCode.F2,
+    toggleHealth = Enum.KeyCode.F3,
+    toggleDist   = Enum.KeyCode.F4,
+    toggleTracer = Enum.KeyCode.F5,
+    toggleTeam   = Enum.KeyCode.F6,
+}
+
+--==============================================================
 -- HELPERS
 --==============================================================
 local function create(class, props, children)
@@ -77,11 +104,9 @@ local function create(class, props, children)
     for _, c in ipairs(children or {}) do c.Parent = inst end
     return inst
 end
-
 local function corner(parent, r)
     return create("UICorner", { CornerRadius = UDim.new(0, r or 8), Parent = parent })
 end
-
 local function stroke(parent, color, thickness, transparency)
     return create("UIStroke", {
         Color = color or Color3.fromRGB(60, 60, 75),
@@ -91,7 +116,6 @@ local function stroke(parent, color, thickness, transparency)
         Parent = parent,
     })
 end
-
 local function padding(parent, t, r, b, l)
     return create("UIPadding", {
         PaddingTop = UDim.new(0, t or 0),
@@ -101,37 +125,38 @@ local function padding(parent, t, r, b, l)
         Parent = parent,
     })
 end
-
 local function tween(obj, time, props, style)
     local t = TweenService:Create(obj, TweenInfo.new(time or 0.2, style or Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props)
     t:Play()
     return t
 end
-
 local function clamp(v, mn, mx) return math.max(mn, math.min(mx, v)) end
-
 local function lerpColor(a, b, t)
     return Color3.new(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t)
 end
-
 local function formatDist(studs)
     if studs < 100 then return string.format("%.0fm", studs) end
     return string.format("%.1fkm", studs / 100)
 end
-
---==============================================================
--- ENCONTRA PlayerGui (fallback se não existir)
---==============================================================
 local function getPlayerGui()
-    local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-    if not pg then
-        pg = LocalPlayer:WaitForChild("PlayerGui", 5)
-    end
-    return pg
+    return LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 5)
+end
+
+-- Verifica visibilidade via raycast
+local function isVisible(targetPart)
+    if not targetPart then return false end
+    local origin = Camera.CFrame.Position
+    local dir = (targetPart.Position - origin)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { LocalPlayer.Character, Camera }
+    local result = Workspace:Raycast(origin, dir, params)
+    if not result then return true end
+    return result.Instance:IsDescendantOf(targetPart.Parent)
 end
 
 --==============================================================
--- ESP RENDERER (usa Frames, não Drawing)
+-- ESP RENDERER
 --==============================================================
 local ESP = {}
 ESP.__index = ESP
@@ -139,14 +164,8 @@ ESP.__index = ESP
 function ESP.new()
     local self = setmetatable({}, ESP)
     self.cache = {}
-    
-    -- ScreenGui dedicado para o ESP (independente do menu)
     local pg = getPlayerGui()
-    if not pg then
-        warn("[ESP] PlayerGui não encontrado!")
-        return self
-    end
-    
+    if not pg then return self end
     self.container = create("ScreenGui", {
         Name = "ESP_RenderLayer",
         ResetOnSpawn = false,
@@ -155,13 +174,11 @@ function ESP.new()
         DisplayOrder = 5,
         Parent = pg,
     })
-    
     return self
 end
 
 function ESP:getElements(player)
     if self.cache[player] then return self.cache[player] end
-    
     local holder = create("Frame", {
         Name = "ESP_" .. player.Name,
         BackgroundTransparency = 1,
@@ -169,16 +186,11 @@ function ESP:getElements(player)
         Size = UDim2.new(0, 0, 0, 0),
         Parent = self.container,
     })
-    
     local el = { holder = holder }
-    
-    -- Box outline (4 linhas via frames)
     el.box_top    = create("Frame", { BackgroundColor3 = Config.color_enemy, BorderSizePixel = 0, Parent = holder })
     el.box_bottom = create("Frame", { BackgroundColor3 = Config.color_enemy, BorderSizePixel = 0, Parent = holder })
     el.box_left   = create("Frame", { BackgroundColor3 = Config.color_enemy, BorderSizePixel = 0, Parent = holder })
     el.box_right  = create("Frame", { BackgroundColor3 = Config.color_enemy, BorderSizePixel = 0, Parent = holder })
-    
-    -- Nome
     el.name = create("TextLabel", {
         BackgroundTransparency = 1,
         TextColor3 = Config.color_name,
@@ -191,8 +203,6 @@ function ESP:getElements(player)
         TextXAlignment = Enum.TextXAlignment.Center,
         Parent = holder,
     })
-    
-    -- Distância
     el.distance = create("TextLabel", {
         BackgroundTransparency = 1,
         TextColor3 = Config.color_distance,
@@ -205,8 +215,6 @@ function ESP:getElements(player)
         TextXAlignment = Enum.TextXAlignment.Center,
         Parent = holder,
     })
-    
-    -- Barra de vida (bg + fill)
     el.hp_bg = create("Frame", {
         BackgroundColor3 = Color3.fromRGB(30, 30, 40),
         BorderSizePixel = 0,
@@ -214,7 +222,6 @@ function ESP:getElements(player)
         Parent = holder,
     })
     corner(el.hp_bg, 2)
-    
     el.hp_fill = create("Frame", {
         BackgroundColor3 = Config.color_health,
         BorderSizePixel = 0,
@@ -224,21 +231,18 @@ function ESP:getElements(player)
         Parent = el.hp_bg,
     })
     corner(el.hp_fill, 2)
-    
-    -- Tracer (frame fino rotacionado)
     el.tracer = create("Frame", {
         BackgroundColor3 = Config.color_tracer,
         BorderSizePixel = 0,
         AnchorPoint = Vector2.new(0.5, 0),
         Parent = holder,
     })
-    
     self.cache[player] = el
     return el
 end
 
 function ESP:hide(el)
-    el.holder.Visible = false
+    if el.holder then el.holder.Visible = false end
 end
 
 function ESP:destroy(player)
@@ -258,18 +262,14 @@ function ESP:getData(character)
     local head = character:FindFirstChild("Head")
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not (hrp and head and humanoid) or humanoid.Health <= 0 then return nil end
-    
     local topWorld    = head.Position + Vector3.new(0, 0.6, 0)
     local bottomWorld = hrp.Position - Vector3.new(0, hrp.Size.Y * 0.5 + 1.5, 0)
-    
     local topScreen, topOn    = Camera:WorldToViewportPoint(topWorld)
     local bottomScreen, botOn = Camera:WorldToViewportPoint(bottomWorld)
     if not (topOn and botOn) then return nil end
-    
     local height = math.abs(bottomScreen.Y - topScreen.Y)
     local width  = height * 0.55
     if height < 3 then return nil end
-    
     return {
         x = topScreen.X - width / 2,
         y = topScreen.Y,
@@ -280,96 +280,83 @@ function ESP:getData(character)
         distance = (Camera.CFrame.Position - hrp.Position).Magnitude,
         humanoid = humanoid,
         name = character.Name,
+        hrp = hrp,
     }
 end
 
 function ESP:renderPlayer(player)
     local el = self:getElements(player)
-    
-    if player == LocalPlayer or not self:isEnemy(player) then
-        self:hide(el); return
-    end
-    
+    if player == LocalPlayer or not self:isEnemy(player) then self:hide(el); return end
     local char = player.Character
     if not char then self:hide(el); return end
-    
     local data = self:getData(char)
-    if not data or data.distance > Config.max_distance then
+    if not data or data.distance > Config.max_distance then self:hide(el); return end
+    
+    -- Visibilidade opcional
+    if Config.visible_only and not isVisible(data.hrp) then
         self:hide(el); return
     end
     
     el.holder.Visible = true
-    
     local color = Config.color_enemy
     local th = Config.box_thickness
     
-    -- Box outline (4 frames)
+    -- BOX
     if Config.esp_box then
-        el.box_top.Visible    = true
-        el.box_bottom.Visible = true
-        el.box_left.Visible   = true
-        el.box_right.Visible  = true
-        
+        el.box_top.Visible, el.box_bottom.Visible = true, true
+        el.box_left.Visible, el.box_right.Visible = true, true
         el.box_top.Position    = UDim2.new(0, data.x, 0, data.y)
         el.box_top.Size        = UDim2.new(0, data.w, 0, th)
         el.box_top.BackgroundColor3 = color
-        
         el.box_bottom.Position = UDim2.new(0, data.x, 0, data.bottomY - th)
         el.box_bottom.Size     = UDim2.new(0, data.w, 0, th)
         el.box_bottom.BackgroundColor3 = color
-        
         el.box_left.Position   = UDim2.new(0, data.x, 0, data.y)
         el.box_left.Size       = UDim2.new(0, th, 0, data.h)
         el.box_left.BackgroundColor3 = color
-        
         el.box_right.Position  = UDim2.new(0, data.x + data.w - th, 0, data.y)
         el.box_right.Size      = UDim2.new(0, th, 0, data.h)
         el.box_right.BackgroundColor3 = color
     else
-        el.box_top.Visible = false
-        el.box_bottom.Visible = false
-        el.box_left.Visible = false
-        el.box_right.Visible = false
+        el.box_top.Visible, el.box_bottom.Visible = false, false
+        el.box_left.Visible, el.box_right.Visible = false, false
     end
     
-    -- Nome
+    -- NOME
     if Config.esp_name then
         el.name.Visible = true
         el.name.Text = data.name
         el.name.TextSize = Config.name_size
+        el.name.TextColor3 = Config.color_name
         el.name.Position = UDim2.new(0, data.cx, 0, data.y - 4)
         el.name.Size = UDim2.new(0, math.max(data.w * 2, 120), 0, 20)
     else
         el.name.Visible = false
     end
     
-    -- Distância
+    -- DISTÂNCIA
     if Config.esp_distance then
         el.distance.Visible = true
         el.distance.Text = "[" .. formatDist(data.distance) .. "]"
+        el.distance.TextColor3 = Config.color_distance
         el.distance.Position = UDim2.new(0, data.cx, 0, data.bottomY + 4)
     else
         el.distance.Visible = false
     end
     
-    -- Vida
+    -- VIDA
     if Config.esp_health then
         el.hp_bg.Visible = true
         el.hp_bg.Position = UDim2.new(0, data.x - 8, 0, data.y)
-        el.hp_bg.Size = UDim2.new(0, 3, 0, data.h)
-        
+        el.hp_bg.Size = UDim2.new(0, Config.hp_bar_width, 0, data.h)
         local ratio = clamp(data.humanoid.Health / math.max(data.humanoid.MaxHealth, 1), 0, 1)
         el.hp_fill.Size = UDim2.new(1, 0, ratio, 0)
-        el.hp_fill.BackgroundColor3 = lerpColor(
-            Color3.fromRGB(255, 60, 60),
-            Config.color_health,
-            ratio
-        )
+        el.hp_fill.BackgroundColor3 = lerpColor(Color3.fromRGB(255, 60, 60), Config.color_health, ratio)
     else
         el.hp_bg.Visible = false
     end
     
-    -- Tracer
+    -- TRACER
     if Config.esp_tracer then
         local originX, originY
         if Config.tracer_origin == "Bottom" then
@@ -382,14 +369,10 @@ function ESP:renderPlayer(player)
             local mp = UserInputService:GetMouseLocation()
             originX, originY = mp.X, mp.Y
         end
-        
-        local targetX = data.cx
-        local targetY = data.bottomY
-        local dx = targetX - originX
-        local dy = targetY - originY
+        local targetX, targetY = data.cx, data.bottomY
+        local dx, dy = targetX - originX, targetY - originY
         local length = math.sqrt(dx * dx + dy * dy)
         local angle = math.deg(math.atan2(dy, dx)) + 90
-        
         el.tracer.Visible = true
         el.tracer.Position = UDim2.new(0, originX, 0, originY)
         el.tracer.Size = UDim2.new(0, 1, 0, length)
@@ -405,21 +388,13 @@ function ESP:update()
         for _, el in pairs(self.cache) do self:hide(el) end
         return
     end
-    
     for _, player in ipairs(Players:GetPlayers()) do
         pcall(function() self:renderPlayer(player) end)
     end
 end
 
-function ESP:clear()
-    for p, el in pairs(self.cache) do
-        if el.holder then el.holder:Destroy() end
-    end
-    self.cache = {}
-end
-
 --==============================================================
--- UI DO MENU
+-- UI
 --==============================================================
 local UI = {}
 UI.__index = UI
@@ -430,20 +405,14 @@ function UI.new()
     self.tabButtons = {}
     self.activeTab = "Visual"
     self.collapsed = false
-    
     self:build()
-    self:setupHotkey()
+    self:setupHotkeys()
     return self
 end
 
 function UI:build()
     local pg = getPlayerGui()
-    if not pg then
-        warn("[UI] PlayerGui não encontrado!")
-        return
-    end
-    
-    -- Remove gui antigo se existir
+    if not pg then return end
     local old = pg:FindFirstChild("ESP_SecuritySuite")
     if old then old:Destroy() end
     
@@ -455,18 +424,16 @@ function UI:build()
         DisplayOrder = 100,
         Parent = pg,
     })
-    
     self.main = create("Frame", {
         Name = "Main",
-        Size = UDim2.new(0, 500, 0, 440),
-        Position = UDim2.new(0, 100, 0, 100),
+        Size = UDim2.new(0, 540, 0, 480),
+        Position = UDim2.new(0, 80, 0, 80),
         BackgroundColor3 = Theme.bg_primary,
         BorderSizePixel = 0,
         Parent = self.screen,
     })
     corner(self.main, 12)
     stroke(self.main, Color3.fromRGB(55, 55, 70), 1, 0.3)
-    
     self:buildHeader()
     self:buildSidebar()
     self:buildContent()
@@ -478,7 +445,7 @@ end
 function UI:buildHeader()
     local header = create("Frame", {
         Name = "Header",
-        Size = UDim2.new(1, 0, 0, 52),
+        Size = UDim2.new(1, 0, 0, 56),
         BackgroundColor3 = Theme.bg_secondary,
         BorderSizePixel = 0,
         Parent = self.main,
@@ -492,7 +459,6 @@ function UI:buildHeader()
         Parent = header,
     })
     
-    -- Logo
     local dot = create("Frame", {
         Size = UDim2.new(0, 12, 0, 12),
         Position = UDim2.new(0, 20, 0.5, -6),
@@ -505,7 +471,7 @@ function UI:buildHeader()
     
     create("TextLabel", {
         Size = UDim2.new(0, 260, 0, 22),
-        Position = UDim2.new(0, 42, 0, 10),
+        Position = UDim2.new(0, 42, 0, 12),
         BackgroundTransparency = 1,
         Text = "ESP Security Suite",
         TextColor3 = Theme.text_primary,
@@ -514,12 +480,11 @@ function UI:buildHeader()
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = header,
     })
-    
     create("TextLabel", {
         Size = UDim2.new(0, 260, 0, 16),
-        Position = UDim2.new(0, 42, 0, 30),
+        Position = UDim2.new(0, 42, 0, 32),
         BackgroundTransparency = 1,
-        Text = "v1.1 • Xeno Edition",
+        Text = "v1.2 • Toggles individuais",
         TextColor3 = Theme.text_muted,
         TextSize = 11,
         Font = FONTS.body,
@@ -527,13 +492,12 @@ function UI:buildHeader()
         Parent = header,
     })
     
-    -- Toggle mestre
     self.masterBtn = create("TextButton", {
-        Size = UDim2.new(0, 110, 0, 30),
-        Position = UDim2.new(1, -190, 0.5, -15),
+        Size = UDim2.new(0, 130, 0, 32),
+        Position = UDim2.new(1, -210, 0.5, -16),
         BackgroundColor3 = Theme.bg_tertiary,
         BorderSizePixel = 0,
-        Text = "● DESLIGADO",
+        Text = "● ESP DESLIGADO",
         TextColor3 = Theme.text_secondary,
         TextSize = 12,
         Font = FONTS.title,
@@ -542,10 +506,7 @@ function UI:buildHeader()
     })
     corner(self.masterBtn, 6)
     self.masterStroke = stroke(self.masterBtn, Theme.danger, 1, 0.5)
-    
-    table.insert(self.connections, self.masterBtn.MouseButton1Click:Connect(function()
-        self:toggleMaster()
-    end))
+    table.insert(self.connections, self.masterBtn.MouseButton1Click:Connect(function() self:toggleMaster() end))
     
     -- Minimizar
     local minBtn = create("TextButton", {
@@ -561,9 +522,7 @@ function UI:buildHeader()
         Parent = header,
     })
     corner(minBtn, 6)
-    table.insert(self.connections, minBtn.MouseButton1Click:Connect(function()
-        self:toggleCollapse()
-    end))
+    table.insert(self.connections, minBtn.MouseButton1Click:Connect(function() self:toggleCollapse() end))
     
     -- Fechar
     local closeBtn = create("TextButton", {
@@ -594,46 +553,47 @@ end
 function UI:toggleMaster()
     Config.enabled = not Config.enabled
     if Config.enabled then
-        self.masterBtn.Text = "● ATIVO"
+        self.masterBtn.Text = "● ESP ATIVO"
         self.masterBtn.TextColor3 = Theme.success
         self.masterBtn.BackgroundColor3 = Color3.fromRGB(30, 55, 40)
         self.masterStroke.Color = Theme.success
         self.statusDot.BackgroundColor3 = Theme.success
         self:setStatus("ESP ATIVO", "success")
+        self:notify("ESP LIGADO")
     else
-        self.masterBtn.Text = "● DESLIGADO"
+        self.masterBtn.Text = "● ESP DESLIGADO"
         self.masterBtn.TextColor3 = Theme.text_secondary
         self.masterBtn.BackgroundColor3 = Theme.bg_tertiary
         self.masterStroke.Color = Theme.danger
         self.statusDot.BackgroundColor3 = Theme.accent
         self:setStatus("ESP desativado", "muted")
+        self:notify("ESP DESLIGADO")
     end
 end
 
 function UI:buildSidebar()
     local sidebar = create("Frame", {
         Name = "Sidebar",
-        Size = UDim2.new(0, 140, 1, -52 - 40),
-        Position = UDim2.new(0, 0, 0, 52),
+        Size = UDim2.new(0, 150, 1, -56 - 40),
+        Position = UDim2.new(0, 0, 0, 56),
         BackgroundColor3 = Theme.bg_secondary,
         BorderSizePixel = 0,
         Parent = self.main,
     })
     padding(sidebar, 10, 8, 10, 8)
-    
     create("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 4),
         Parent = sidebar,
     })
-    
     local tabs = {
-        { name = "Visual", icon = "◈" },
-        { name = "Target", icon = "◎" },
-        { name = "Colors", icon = "◐" },
-        { name = "Config", icon = "⚙" },
+        { name = "Visual",  icon = "◈" },
+        { name = "Toggles", icon = "◉" },
+        { name = "Target",  icon = "◎" },
+        { name = "Colors",  icon = "◐" },
+        { name = "Hotkeys", icon = "⌨" },
+        { name = "Config",  icon = "⚙" },
     }
-    
     for _, tab in ipairs(tabs) do
         self:createTabButton(sidebar, tab.name, tab.icon)
     end
@@ -642,7 +602,7 @@ end
 function UI:createTabButton(parent, name, icon)
     local btn = create("TextButton", {
         Name = name,
-        Size = UDim2.new(1, 0, 0, 36),
+        Size = UDim2.new(1, 0, 0, 34),
         BackgroundColor3 = Theme.bg_secondary,
         BorderSizePixel = 0,
         Text = "  " .. icon .. "   " .. name,
@@ -654,7 +614,6 @@ function UI:createTabButton(parent, name, icon)
         Parent = parent,
     })
     corner(btn, 6)
-    
     local ind = create("Frame", {
         Name = "Indicator",
         Size = UDim2.new(0, 3, 0, 0),
@@ -665,21 +624,13 @@ function UI:createTabButton(parent, name, icon)
         Parent = btn,
     })
     corner(ind, 2)
-    
     table.insert(self.connections, btn.MouseEnter:Connect(function()
-        if self.activeTab ~= name then
-            tween(btn, 0.15, { BackgroundColor3 = Theme.bg_tertiary })
-        end
+        if self.activeTab ~= name then tween(btn, 0.15, { BackgroundColor3 = Theme.bg_tertiary }) end
     end))
     table.insert(self.connections, btn.MouseLeave:Connect(function()
-        if self.activeTab ~= name then
-            tween(btn, 0.15, { BackgroundColor3 = Theme.bg_secondary })
-        end
+        if self.activeTab ~= name then tween(btn, 0.15, { BackgroundColor3 = Theme.bg_secondary }) end
     end))
-    table.insert(self.connections, btn.MouseButton1Click:Connect(function()
-        self:selectTab(name)
-    end))
-    
+    table.insert(self.connections, btn.MouseButton1Click:Connect(function() self:selectTab(name) end))
     btn.indicator = ind
     table.insert(self.tabButtons, btn)
 end
@@ -692,9 +643,7 @@ function UI:selectTab(name)
             BackgroundColor3 = active and Theme.bg_tertiary or Theme.bg_secondary,
             TextColor3 = active and Theme.text_primary or Theme.text_secondary,
         })
-        tween(btn.indicator, 0.2, {
-            Size = UDim2.new(0, 3, active and 1 or 0, 0),
-        })
+        tween(btn.indicator, 0.2, { Size = UDim2.new(0, 3, active and 1 or 0, 0) })
     end
     self:renderContent(name)
 end
@@ -702,8 +651,8 @@ end
 function UI:buildContent()
     self.content = create("Frame", {
         Name = "Content",
-        Size = UDim2.new(1, -140, 1, -52 - 40),
-        Position = UDim2.new(0, 140, 0, 52),
+        Size = UDim2.new(1, -150, 1, -56 - 40),
+        Position = UDim2.new(0, 150, 0, 56),
         BackgroundColor3 = Theme.bg_primary,
         BorderSizePixel = 0,
         ClipsDescendants = true,
@@ -729,7 +678,6 @@ function UI:buildFooter()
         BorderSizePixel = 0,
         Parent = footer,
     })
-    
     self.statusLabel = create("TextLabel", {
         Size = UDim2.new(0.7, 0, 1, 0),
         Position = UDim2.new(0, 16, 0, 0),
@@ -741,12 +689,11 @@ function UI:buildFooter()
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = footer,
     })
-    
     create("TextLabel", {
         Size = UDim2.new(0.3, -16, 1, 0),
         Position = UDim2.new(0.7, 0, 0, 0),
         BackgroundTransparency = 1,
-        Text = "INS — abrir/fechar",
+        Text = "INS — menu • RSHIFT — ESP",
         TextColor3 = Theme.text_muted,
         TextSize = 11,
         Font = FONTS.body,
@@ -765,11 +712,10 @@ function UI:setStatus(text, t)
     self.statusLabel.TextColor3 = color
 end
 
--- Notificação flutuante simples
 function UI:notify(msg)
     local n = create("TextLabel", {
-        Size = UDim2.new(0, 300, 0, 40),
-        Position = UDim2.new(0.5, -150, 0, 30),
+        Size = UDim2.new(0, 320, 0, 42),
+        Position = UDim2.new(0.5, -160, 0, 30),
         BackgroundColor3 = Theme.bg_secondary,
         BorderSizePixel = 0,
         Text = msg,
@@ -780,11 +726,12 @@ function UI:notify(msg)
     })
     corner(n, 8)
     stroke(n, Theme.accent, 1, 0.3)
-    
-    task.delay(2, function()
-        tween(n, 0.3, { BackgroundTransparency = 1, TextTransparency = 1 })
-        task.wait(0.3)
-        n:Destroy()
+    task.delay(1.8, function()
+        if n and n.Parent then
+            tween(n, 0.3, { BackgroundTransparency = 1, TextTransparency = 1 })
+            task.wait(0.3)
+            n:Destroy()
+        end
     end)
 end
 
@@ -792,7 +739,6 @@ function UI:setupDrag()
     local dragging, dragStart, startPos
     local header = self.main:FindFirstChild("Header")
     if not header then return end
-    
     table.insert(self.connections, header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
@@ -800,7 +746,6 @@ function UI:setupDrag()
             startPos = self.main.Position
         end
     end))
-    
     table.insert(self.connections, UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
@@ -810,7 +755,6 @@ function UI:setupDrag()
             )
         end
     end))
-    
     table.insert(self.connections, UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
@@ -818,26 +762,52 @@ function UI:setupDrag()
     end))
 end
 
-function UI:setupHotkey()
+function UI:setupHotkeys()
     table.insert(self.connections, UserInputService.InputBegan:Connect(function(input, processed)
         if processed then return end
-        if input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.RightShift then
+        local k = input.KeyCode
+        
+        if k == Hotkeys.toggleMenu then
             self.screen.Enabled = not self.screen.Enabled
-            if self.screen.Enabled then
-                self:notify("Menu aberto")
-            end
+            self:notify(self.screen.Enabled and "Menu aberto" or "Menu fechado")
+        elseif k == Hotkeys.toggleMaster then
+            self:toggleMaster()
+        elseif k == Hotkeys.toggleBox then
+            Config.esp_box = not Config.esp_box
+            self:notify("Box: " .. (Config.esp_box and "ON" or "OFF"))
+            if self.activeTab == "Toggles" then self:renderContent("Toggles") end
+        elseif k == Hotkeys.toggleName then
+            Config.esp_name = not Config.esp_name
+            self:notify("Nome: " .. (Config.esp_name and "ON" or "OFF"))
+            if self.activeTab == "Toggles" then self:renderContent("Toggles") end
+        elseif k == Hotkeys.toggleHealth then
+            Config.esp_health = not Config.esp_health
+            self:notify("Vida: " .. (Config.esp_health and "ON" or "OFF"))
+            if self.activeTab == "Toggles" then self:renderContent("Toggles") end
+        elseif k == Hotkeys.toggleDist then
+            Config.esp_distance = not Config.esp_distance
+            self:notify("Distância: " .. (Config.esp_distance and "ON" or "OFF"))
+            if self.activeTab == "Toggles" then self:renderContent("Toggles") end
+        elseif k == Hotkeys.toggleTracer then
+            Config.esp_tracer = not Config.esp_tracer
+            self:notify("Tracer: " .. (Config.esp_tracer and "ON" or "OFF"))
+            if self.activeTab == "Toggles" then self:renderContent("Toggles") end
+        elseif k == Hotkeys.toggleTeam then
+            Config.team_check = not Config.team_check
+            self:notify("Team Check: " .. (Config.team_check and "ON" or "OFF"))
+            if self.activeTab == "Toggles" then self:renderContent("Toggles") end
         end
     end))
 end
 
 function UI:toggleCollapse()
     self.collapsed = not self.collapsed
-    local targetSize = self.collapsed and UDim2.new(0, 500, 0, 52) or UDim2.new(0, 500, 0, 440)
+    local targetSize = self.collapsed and UDim2.new(0, 540, 0, 56) or UDim2.new(0, 540, 0, 480)
     tween(self.main, 0.25, { Size = targetSize })
 end
 
 --==============================================================
--- COMPONENTES DE UI
+-- COMPONENTES
 --==============================================================
 function UI:clearContent()
     for _, c in ipairs(self.content:GetChildren()) do
@@ -886,9 +856,10 @@ function UI:section(parent, title)
     return s
 end
 
-function UI:toggle(parent, label, initial, callback)
+-- Toggle COM checkbox visual + hotkey
+function UI:toggle(parent, label, key, initial, callback)
     local row = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 36),
+        Size = UDim2.new(1, 0, 0, 40),
         BackgroundColor3 = Theme.bg_secondary,
         BorderSizePixel = 0,
         Parent = parent,
@@ -896,9 +867,32 @@ function UI:toggle(parent, label, initial, callback)
     corner(row, 6)
     stroke(row, Color3.fromRGB(45, 45, 58), 1, 0.5)
     
+    -- Indicador de status (checkbox visual)
+    local checkbox = create("Frame", {
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(0, 12, 0.5, -10),
+        BackgroundColor3 = initial and Theme.accent or Theme.bg_tertiary,
+        BorderSizePixel = 0,
+        Parent = row,
+    })
+    corner(checkbox, 5)
+    stroke(checkbox, initial and Theme.accent or Color3.fromRGB(60, 60, 75), 2, 0)
+    
+    local check = create("TextLabel", {
+        Name = "CheckMark",
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = initial and "✓" or "",
+        TextColor3 = Color3.new(1, 1, 1),
+        TextSize = 14,
+        Font = FONTS.title,
+        Parent = checkbox,
+    })
+    
+    -- Label
     create("TextLabel", {
-        Size = UDim2.new(1, -70, 1, 0),
-        Position = UDim2.new(0, 12, 0, 0),
+        Size = UDim2.new(1, -150, 1, 0),
+        Position = UDim2.new(0, 42, 0, 0),
         BackgroundTransparency = 1,
         Text = label,
         TextColor3 = Theme.text_primary,
@@ -908,10 +902,26 @@ function UI:toggle(parent, label, initial, callback)
         Parent = row,
     })
     
+    -- Hotkey badge
+    local keyName = key and key.Name or ""
+    local keyBadge = create("TextLabel", {
+        Size = UDim2.new(0, 50, 0, 20),
+        Position = UDim2.new(1, -120, 0.5, -10),
+        BackgroundColor3 = Theme.bg_tertiary,
+        BorderSizePixel = 0,
+        Text = keyName,
+        TextColor3 = Theme.text_muted,
+        TextSize = 10,
+        Font = FONTS.heading,
+        Parent = row,
+    })
+    corner(keyBadge, 4)
+    
+    -- Track do switch
     local track = create("Frame", {
         Size = UDim2.new(0, 40, 0, 22),
-        Position = UDim2.new(1, -52, 0.5, -11),
-        BackgroundColor3 = initial and Theme.accent or Theme.bg_tertiary,
+        Position = UDim2.new(1, -58, 0.5, -11),
+        BackgroundColor3 = initial and Theme.success or Theme.bg_tertiary,
         BorderSizePixel = 0,
         Parent = row,
     })
@@ -934,14 +944,23 @@ function UI:toggle(parent, label, initial, callback)
         Parent = row,
     })
     
-    table.insert(self.connections, btn.MouseButton1Click:Connect(function()
-        state = not state
-        tween(track, 0.2, { BackgroundColor3 = state and Theme.accent or Theme.bg_tertiary })
+    local function setState(v)
+        state = v
+        tween(track, 0.2, { BackgroundColor3 = state and Theme.success or Theme.bg_tertiary })
         tween(knob, 0.2, { Position = state and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9) })
+        tween(checkbox, 0.2, { BackgroundColor3 = state and Theme.accent or Theme.bg_tertiary })
+        local chkStroke = checkbox:FindFirstChildOfClass("UIStroke")
+        if chkStroke then chkStroke.Color = state and Theme.accent or Color3.fromRGB(60, 60, 75) end
+        check.Text = state and "✓" or ""
         if callback then callback(state) end
+    end
+    
+    table.insert(self.connections, btn.MouseButton1Click:Connect(function()
+        setState(not state)
     end))
     
-    return row
+    -- Retorna o updater para o hotkey conseguir sincronizar
+    return row, setState
 end
 
 function UI:slider(parent, label, mn, mx, default, callback)
@@ -965,7 +984,6 @@ function UI:slider(parent, label, mn, mx, default, callback)
         TextXAlignment = Enum.TextXAlignment.Right,
         Parent = row,
     })
-    
     create("TextLabel", {
         Size = UDim2.new(1, -100, 0, 20),
         Position = UDim2.new(0, 12, 0, 8),
@@ -1023,7 +1041,6 @@ function UI:slider(parent, label, mn, mx, default, callback)
         Text = "",
         Parent = row,
     })
-    
     table.insert(self.connections, btn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
@@ -1036,11 +1053,8 @@ function UI:slider(parent, label, mn, mx, default, callback)
         end
     end))
     table.insert(self.connections, UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
     end))
-    
     return row
 end
 
@@ -1048,7 +1062,6 @@ function UI:button(parent, label, callback, style)
     local color = style == "danger" and Theme.danger
         or style == "primary" and Theme.accent
         or Theme.bg_tertiary
-    
     local btn = create("TextButton", {
         Size = UDim2.new(1, 0, 0, 34),
         BackgroundColor3 = color,
@@ -1062,7 +1075,6 @@ function UI:button(parent, label, callback, style)
     })
     corner(btn, 6)
     stroke(btn, Color3.new(1, 1, 1), 1, 0.85)
-    
     table.insert(self.connections, btn.MouseEnter:Connect(function()
         tween(btn, 0.15, { BackgroundColor3 = lerpColor(color, Color3.new(1,1,1), 0.15) })
     end))
@@ -1082,7 +1094,6 @@ function UI:colorPicker(parent, label, initial, callback)
     })
     corner(row, 6)
     stroke(row, Color3.fromRGB(45, 45, 58), 1, 0.5)
-    
     create("TextLabel", {
         Size = UDim2.new(1, -70, 1, 0),
         Position = UDim2.new(0, 12, 0, 0),
@@ -1094,7 +1105,6 @@ function UI:colorPicker(parent, label, initial, callback)
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = row,
     })
-    
     local swatch = create("Frame", {
         Size = UDim2.new(0, 40, 0, 22),
         Position = UDim2.new(1, -52, 0.5, -11),
@@ -1104,28 +1114,16 @@ function UI:colorPicker(parent, label, initial, callback)
     })
     corner(swatch, 6)
     stroke(swatch, Color3.new(1,1,1), 1, 0.6)
-    
     local presets = {
-        Color3.fromRGB(255, 80, 80),
-        Color3.fromRGB(255, 165, 0),
-        Color3.fromRGB(254, 231, 92),
-        Color3.fromRGB(87, 242, 135),
-        Color3.fromRGB(80, 200, 255),
-        Color3.fromRGB(88, 101, 242),
-        Color3.fromRGB(200, 100, 255),
-        Color3.fromRGB(255, 255, 255),
+        Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 165, 0),
+        Color3.fromRGB(254, 231, 92), Color3.fromRGB(87, 242, 135),
+        Color3.fromRGB(80, 200, 255), Color3.fromRGB(88, 101, 242),
+        Color3.fromRGB(200, 100, 255), Color3.fromRGB(255, 255, 255),
     }
     local idx = 1
-    -- Encontra preset mais próximo
-    for i, p in ipairs(presets) do
-        if p == initial then idx = i break end
-    end
-    
+    for i, p in ipairs(presets) do if p == initial then idx = i break end end
     local btn = create("TextButton", {
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        Text = "",
-        Parent = row,
+        Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", Parent = row,
     })
     table.insert(self.connections, btn.MouseButton1Click:Connect(function()
         idx = idx % #presets + 1
@@ -1133,7 +1131,64 @@ function UI:colorPicker(parent, label, initial, callback)
         swatch.BackgroundColor3 = c
         if callback then callback(c) end
     end))
+    return row
+end
+
+function UI:keybindRow(parent, label, key, onCapture)
+    local row = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundColor3 = Theme.bg_secondary,
+        BorderSizePixel = 0,
+        Parent = parent,
+    })
+    corner(row, 6)
+    stroke(row, Color3.fromRGB(45, 45, 58), 1, 0.5)
+    create("TextLabel", {
+        Size = UDim2.new(0.6, 0, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        BackgroundTransparency = 1,
+        Text = label,
+        TextColor3 = Theme.text_primary,
+        TextSize = 13,
+        Font = FONTS.body,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = row,
+    })
+    local keyLabel = create("TextButton", {
+        Size = UDim2.new(0, 90, 0, 24),
+        Position = UDim2.new(1, -102, 0.5, -12),
+        BackgroundColor3 = Theme.bg_tertiary,
+        BorderSizePixel = 0,
+        Text = key.Name,
+        TextColor3 = Theme.accent,
+        TextSize = 12,
+        Font = FONTS.heading,
+        AutoButtonColor = false,
+        Parent = row,
+    })
+    corner(keyLabel, 4)
+    stroke(keyLabel, Theme.accent, 1, 0.5)
     
+    local waiting = false
+    local conn
+    table.insert(self.connections, keyLabel.MouseButton1Click:Connect(function()
+        if waiting then return end
+        waiting = true
+        keyLabel.Text = "[...]"
+        keyLabel.TextColor3 = Theme.warning
+        local connInput
+        connInput = UserInputService.InputBegan:Connect(function(input, processed)
+            if processed then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                keyLabel.Text = input.KeyCode.Name
+                keyLabel.TextColor3 = Theme.accent
+                waiting = false
+                if onCapture then onCapture(input.KeyCode) end
+                connInput:Disconnect()
+            end
+        end)
+        table.insert(self.connections, connInput)
+    end))
     return row
 end
 
@@ -1145,37 +1200,144 @@ function UI:renderContent(tab)
     local scroll = self:createScrolling()
     
     if tab == "Visual" then
-        self:section(scroll, "Elementos")
-        self:toggle(scroll, "Caixa (Box)", Config.esp_box, function(v) Config.esp_box = v end)
-        self:toggle(scroll, "Nome", Config.esp_name, function(v) Config.esp_name = v end)
-        self:toggle(scroll, "Barra de Vida", Config.esp_health, function(v) Config.esp_health = v end)
-        self:toggle(scroll, "Distância", Config.esp_distance, function(v) Config.esp_distance = v end)
-        self:toggle(scroll, "Tracer (Linha)", Config.esp_tracer, function(v) Config.esp_tracer = v end)
+        -- Informação
+        local info = create("Frame", {
+            Size = UDim2.new(1, 0, 0, 50),
+            BackgroundColor3 = Theme.bg_secondary,
+            BorderSizePixel = 0,
+            Parent = scroll,
+        })
+        corner(info, 6)
+        stroke(info, Theme.accent, 1, 0.7)
+        create("TextLabel", {
+            Size = UDim2.new(1, -20, 1, 0),
+            Position = UDim2.new(0, 10, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "💡 Use a aba Toggles para ligar/desligar\nelementos individuais do ESP.",
+            TextColor3 = Theme.text_secondary,
+            TextSize = 12,
+            Font = FONTS.body,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Center,
+            Parent = info,
+        })
         
-        self:section(scroll, "Aparência")
-        self:slider(scroll, "Espessura Box", 1, 5, Config.box_thickness, function(v) Config.box_thickness = v end)
-        self:slider(scroll, "Tamanho Nome", 10, 22, Config.name_size, function(v) Config.name_size = v end)
+        self:section(scroll, "Aparência da Box")
+        self:slider(scroll, "Espessura da Box", 1, 5, Config.box_thickness, function(v) Config.box_thickness = v end)
+        self:slider(scroll, "Largura da Barra de Vida", 2, 8, Config.hp_bar_width, function(v) Config.hp_bar_width = v end)
+        
+        self:section(scroll, "Texto")
+        self:slider(scroll, "Tamanho do Nome", 10, 22, Config.name_size, function(v) Config.name_size = v end)
+        
+        self:section(scroll, "Performance")
+        self:slider(scroll, "Refresh Rate (FPS)", 15, 120, Config.refresh_rate, function(v) Config.refresh_rate = v end)
+        self:slider(scroll, "Distância Máxima", 100, 2000, Config.max_distance, function(v) Config.max_distance = v end)
+        
+    elseif tab == "Toggles" then
+        self:section(scroll, "Elementos do ESP")
+        
+        self:toggle(scroll, "Caixa (Box)", Hotkeys.toggleBox, Config.esp_box, function(v)
+            Config.esp_box = v
+        end)
+        self:toggle(scroll, "Nome do Jogador", Hotkeys.toggleName, Config.esp_name, function(v)
+            Config.esp_name = v
+        end)
+        self:toggle(scroll, "Barra de Vida", Hotkeys.toggleHealth, Config.esp_health, function(v)
+            Config.esp_health = v
+        end)
+        self:toggle(scroll, "Distância", Hotkeys.toggleDist, Config.esp_distance, function(v)
+            Config.esp_distance = v
+        end)
+        self:toggle(scroll, "Tracer (Linha)", Hotkeys.toggleTracer, Config.esp_tracer, function(v)
+            Config.esp_tracer = v
+        end)
+        
+        self:section(scroll, "Filtros")
+        self:toggle(scroll, "Somente Inimigos (Team Check)", Hotkeys.toggleTeam, Config.team_check, function(v)
+            Config.team_check = v
+        end)
+        self:toggle(scroll, "Somente Visíveis", nil, Config.visible_only, function(v)
+            Config.visible_only = v
+        end)
+        
+        self:section(scroll, "Ações Rápidas")
+        self:button(scroll, "Ligar Tudo", function()
+            Config.esp_box = true
+            Config.esp_name = true
+            Config.esp_health = true
+            Config.esp_distance = true
+            Config.esp_tracer = true
+            self:renderContent("Toggles")
+            self:notify("Todos os elementos LIGADOS")
+        end, "primary")
+        self:button(scroll, "Desligar Tudo", function()
+            Config.esp_box = false
+            Config.esp_name = false
+            Config.esp_health = false
+            Config.esp_distance = false
+            Config.esp_tracer = false
+            self:renderContent("Toggles")
+            self:notify("Todos os elementos DESLIGADOS")
+        end)
         
     elseif tab == "Target" then
         self:section(scroll, "Filtros")
-        self:toggle(scroll, "Somente Inimigos", Config.team_check, function(v) Config.team_check = v end)
+        self:toggle(scroll, "Somente Inimigos", Hotkeys.toggleTeam, Config.team_check, function(v) Config.team_check = v end)
+        self:toggle(scroll, "Somente Visíveis (Raycast)", nil, Config.visible_only, function(v) Config.visible_only = v end)
         
         self:section(scroll, "Alcance")
         self:slider(scroll, "Distância Máxima", 100, 2000, Config.max_distance, function(v) Config.max_distance = v end)
-        self:slider(scroll, "Refresh Rate", 15, 120, Config.refresh_rate, function(v) Config.refresh_rate = v end)
         
     elseif tab == "Colors" then
-        self:section(scroll, "Cores")
-        self:colorPicker(scroll, "Inimigo", Config.color_enemy, function(c) Config.color_enemy = c end)
-        self:colorPicker(scroll, "Time", Config.color_team, function(c) Config.color_team = c end)
-        self:colorPicker(scroll, "Vida", Config.color_health, function(c) Config.color_health = c end)
-        self:colorPicker(scroll, "Nome", Config.color_name, function(c) Config.color_name = c end)
-        self:colorPicker(scroll, "Distância", Config.color_distance, function(c) Config.color_distance = c end)
-        self:colorPicker(scroll, "Tracer", Config.color_tracer, function(c) Config.color_tracer = c end)
+        self:section(scroll, "Cores dos Elementos")
+        self:colorPicker(scroll, "Cor Inimigo", Config.color_enemy, function(c) Config.color_enemy = c end)
+        self:colorPicker(scroll, "Cor Time", Config.color_team, function(c) Config.color_team = c end)
+        self:colorPicker(scroll, "Cor Vida", Config.color_health, function(c) Config.color_health = c end)
+        self:colorPicker(scroll, "Cor Nome", Config.color_name, function(c) Config.color_name = c end)
+        self:colorPicker(scroll, "Cor Distância", Config.color_distance, function(c) Config.color_distance = c end)
+        self:colorPicker(scroll, "Cor Tracer", Config.color_tracer, function(c) Config.color_tracer = c end)
+        
+        self:section(scroll, "Ações")
+        self:button(scroll, "Resetar Cores", function()
+            Config.color_enemy = Color3.fromRGB(255, 80, 80)
+            Config.color_team = Color3.fromRGB(80, 200, 255)
+            Config.color_health = Color3.fromRGB(87, 242, 135)
+            Config.color_name = Color3.fromRGB(255, 255, 255)
+            Config.color_distance = Color3.fromRGB(200, 200, 210)
+            Config.color_tracer = Color3.fromRGB(255, 80, 80)
+            self:renderContent("Colors")
+            self:notify("Cores resetadas")
+        end, "primary")
+        
+    elseif tab == "Hotkeys" then
+        self:section(scroll, "Menu")
+        self:keybindRow(scroll, "Abrir/Fechar Menu", Hotkeys.toggleMenu, function(k) Hotkeys.toggleMenu = k end)
+        self:keybindRow(scroll, "Ligar/Desligar ESP", Hotkeys.toggleMaster, function(k) Hotkeys.toggleMaster = k end)
+        
+        self:section(scroll, "Elementos")
+        self:keybindRow(scroll, "Toggle Box", Hotkeys.toggleBox, function(k) Hotkeys.toggleBox = k end)
+        self:keybindRow(scroll, "Toggle Nome", Hotkeys.toggleName, function(k) Hotkeys.toggleName = k end)
+        self:keybindRow(scroll, "Toggle Vida", Hotkeys.toggleHealth, function(k) Hotkeys.toggleHealth = k end)
+        self:keybindRow(scroll, "Toggle Distância", Hotkeys.toggleDist, function(k) Hotkeys.toggleDist = k end)
+        self:keybindRow(scroll, "Toggle Tracer", Hotkeys.toggleTracer, function(k) Hotkeys.toggleTracer = k end)
+        self:keybindRow(scroll, "Toggle Team Check", Hotkeys.toggleTeam, function(k) Hotkeys.toggleTeam = k end)
+        
+        self:button(scroll, "Resetar Hotkeys", function()
+            Hotkeys.toggleMenu = Enum.KeyCode.Insert
+            Hotkeys.toggleMaster = Enum.KeyCode.RightShift
+            Hotkeys.toggleBox = Enum.KeyCode.F1
+            Hotkeys.toggleName = Enum.KeyCode.F2
+            Hotkeys.toggleHealth = Enum.KeyCode.F3
+            Hotkeys.toggleDist = Enum.KeyCode.F4
+            Hotkeys.toggleTracer = Enum.KeyCode.F5
+            Hotkeys.toggleTeam = Enum.KeyCode.F6
+            self:renderContent("Hotkeys")
+            self:notify("Hotkeys resetadas")
+        end)
         
     elseif tab == "Config" then
-        self:section(scroll, "Ações")
-        self:button(scroll, "Resetar Configurações", function()
+        self:section(scroll, "Sessão")
+        self:button(scroll, "Resetar Tudo", function()
             Config.esp_box = true
             Config.esp_name = true
             Config.esp_health = true
@@ -1189,23 +1351,23 @@ function UI:renderContent(tab)
             self:notify("Configurações resetadas")
         end)
         
-        self:button(scroll, "Diagnóstico", function()
+        self:button(scroll, "Diagnóstico de Segurança", function()
             self:runDiagnostic()
         end, "primary")
         
         self:section(scroll, "Sobre")
         local info = create("Frame", {
-            Size = UDim2.new(1, 0, 0, 120),
+            Size = UDim2.new(1, 0, 0, 130),
             BackgroundColor3 = Theme.bg_secondary,
             BorderSizePixel = 0,
             Parent = scroll,
         })
         corner(info, 6)
-        padding(info, 10)
+        padding(info, 12)
         create("TextLabel", {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
-            Text = "ESP Security Suite v1.1\n\nTeste de segurança para SEU servidor.\nUsa apenas Frames (compatível Xeno).\n\nNÃO use em jogos de terceiros.",
+            Text = "ESP Security Suite v1.2\n\nTeste de segurança para SEU servidor.\nCompatível com Xeno (sem Drawing API).\n\n⚠ NÃO use em jogos de terceiros.",
             TextColor3 = Theme.text_secondary,
             TextSize = 12,
             Font = FONTS.body,
@@ -1222,41 +1384,34 @@ function UI:runDiagnostic()
     task.spawn(function()
         task.wait(0.3)
         local issues = {}
-        
         if Drawing then
-            table.insert(issues, "⚠ Drawing API disponível (overlays externos possíveis)")
+            table.insert(issues, "⚠ Drawing API disponível (overlays possíveis)")
         else
             table.insert(issues, "✓ Drawing API indisponível (bom)")
         end
-        
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Team then
                 table.insert(issues, "⚠ Times replicados no cliente")
                 break
             end
         end
-        
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character then
                 local h = p.Character:FindFirstChildOfClass("Humanoid")
                 local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-                if h then
-                    table.insert(issues, "⚠ Health replicado no cliente")
-                end
+                if h then table.insert(issues, "⚠ Health replicado no cliente") end
                 if hrp then
                     local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
                     if dist > 500 then
-                        table.insert(issues, "⚠ Inimigos distantes têm posição exposta")
+                        table.insert(issues, "⚠ Inimigos distantes expostos")
                     end
                 end
                 break
             end
         end
-        
-        print("\n═══ DIAGNÓSTICO ESP ═══")
+        print("\n═══ DIAGNÓSTICO ESP v1.2 ═══")
         for _, i in ipairs(issues) do print(i) end
-        print("═══════════════════════\n")
-        
+        print("═════════════════════════════\n")
         self:setStatus("Diagnóstico completo (veja F9)", "success")
     end)
 end
@@ -1279,6 +1434,6 @@ end)
 
 Players.PlayerRemoving:Connect(function(p) esp:destroy(p) end)
 
-ui:setStatus("Pronto • Pressione INSERT", "success")
-print("[ESP v1.1 Xeno Edition] Carregado!")
-print("[AVISO] Use somente em servidor próprio de teste.")
+ui:setStatus("Pronto • INSERT = menu", "success")
+print("[ESP v1.2] Carregado. Toggles individuais ativos.")
+print("[AVISO] Somente para testes no SEU servidor.")
