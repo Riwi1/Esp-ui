@@ -1,5 +1,6 @@
 --=====================================================================
--- MONOCHROME PRO  •  ESP (INIMIGO) + AIMBOT  •  PT-BR / EN
+-- MONOCHROME PRO v2  •  ESP (INIMIGO) + AIMBOT  •  PT-BR / EN
+-- Aimbot com "gruda" suave baseado em Alpha-Lerp puro
 --=====================================================================
 
 local Players           = game:GetService("Players")
@@ -44,7 +45,6 @@ local T = {
         title       = "MONOCHROME  •  PRO",
         langBtn     = "PT",
         statusOff   = "OFF",
-        -- ESP
         secESP      = "ESP  •  INIMIGO",
         espEnable   = "Ativar ESP",
         espHl       = "Contorno",
@@ -53,7 +53,6 @@ local T = {
         espDist     = "Distância",
         espHp       = "Vida",
         espNote     = "Mostra apenas jogadores de\noutro time (vermelho).",
-        -- AIM
         secAim      = "AIMBOT  •  (RAlt segura)",
         aimEnable   = "Ativar Aimbot",
         aimFov      = "Mostrar FOV",
@@ -84,8 +83,8 @@ local T = {
     },
 }
 
-local function L(key)
-    return (T[LANG] or T.pt)[key] or key
+local function L(k)
+    return (T[LANG] or T.pt)[k] or k
 end
 
 --=====================================================================
@@ -106,7 +105,7 @@ local CFG = {
     AIM = {
         Enabled = false,
         Holding = false,
-        Smooth = 0.35,      -- 0.05 rápido · 1.0 lento
+        Smooth = 0.25,
         MaxDist = 500,
         Part = "Head",
     },
@@ -226,7 +225,7 @@ local titleLbl = new("TextLabel", {
     Parent = top,
 })
 
--- Botão de idioma
+-- Botão idioma
 local langBtn = new("TextButton", {
     Size = UDim2.new(0, 36, 0, 24),
     Position = UDim2.new(1, -270, 0.5, -12),
@@ -282,7 +281,6 @@ local statusTxt = new("TextLabel", {
     Parent = status,
 })
 
--- Controles
 local function ctrlBtn(txt, xOff, hover)
     local b = new("TextButton", {
         Size = UDim2.new(0, 30, 0, 30),
@@ -316,7 +314,6 @@ local minBtn = ctrlBtn("—", -110, C.Bg3)
 local restBtn = ctrlBtn("▢", -76, C.Bg3)
 local closeBtn = ctrlBtn("✕", -42, Color3.fromRGB(60, 30, 30))
 
--- Content
 local content = new("Frame", {
     Size = UDim2.new(1, -28, 1, -68),
     Position = UDim2.new(0, 14, 0, 56),
@@ -358,7 +355,6 @@ closeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Drag
 do
     local drag, start, startPos
     top.InputBegan:Connect(function(i)
@@ -380,7 +376,7 @@ end
 --=====================================================================
 -- COMPONENTES
 --=====================================================================
-local uiRegistry = {}  -- para troca de idioma
+local uiRegistry = {}
 
 local function section(parent, key, y, h)
     local s = new("Frame", {
@@ -647,7 +643,6 @@ local col2 = new("Frame", {
     Parent = content,
 })
 
--- COLUNA 1 — ESP
 local pESP = section(col1, "secESP", 0, 270)
 local espToggle = toggle(pESP, "espEnable", 46, CFG.ESP.Enabled, function(v)
     CFG.ESP.Enabled = v
@@ -663,7 +658,6 @@ toggle(pESP, "espDist", 158, CFG.ESP.ShowDist,      function(v) CFG.ESP.ShowDist
 toggle(pESP, "espHp",   186, CFG.ESP.ShowHealth,    function(v) CFG.ESP.ShowHealth = v end)
 note(pESP, "espNote", 222)
 
--- COLUNA 2 — AIMBOT
 local pAIM = section(col2, "secAim", 0, 270)
 local aimToggle = toggle(pAIM, "aimEnable", 46, CFG.AIM.Enabled, function(v)
     CFG.AIM.Enabled = v
@@ -839,7 +833,7 @@ Players.PlayerAdded:Connect(onPlayer)
 Players.PlayerRemoving:Connect(destroyPlayer)
 
 --=====================================================================
--- AIMBOT — busca alvo + mira suave
+-- AIMBOT — busca alvo
 --=====================================================================
 local function findTarget()
     local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
@@ -865,33 +859,23 @@ local function findTarget()
 end
 
 --=====================================================================
--- AIMBOT FIX — BindToRenderStep com prioridade de câmera
+-- AIMBOT — MIRA SUAVE (mesma fórmula do Premium Aim)
 --=====================================================================
-local AIM_BIND_NAME = "MonoProAimbot"
-
-RunService:UnbindFromRenderStep(AIM_BIND_NAME)  -- limpa binds anteriores
-
-RunService:BindToRenderStep(AIM_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function(dt)
-    if not CFG.AIM.Enabled or not CFG.AIM.Holding then return end
+RunService.RenderStepped:Connect(function(dt)
+    if not CFG.AIM.Enabled then return end
+    if not CFG.AIM.Holding then return end
 
     local target = findTarget()
     if not target then return end
 
     local camPos = Camera.CFrame.Position
-    local targetPos = target.Position
+    local desired = CFrame.new(camPos, target.Position)
 
-    -- Evita câmera "travando" quando o alvo está quase na mesma posição
-    if (targetPos - camPos).Magnitude < 0.5 then return end
-
-    -- CFrame com up vector padrão (evita roll)
-    local desired = CFrame.lookAt(camPos, targetPos, Vector3.new(0, 1, 0))
-
-    -- Interpolação de suavidade correta
-    -- Smooth = 0.05 → alpha quase 1 (rápido)
-    -- Smooth = 1.0  → alpha pequeno (lento)
-    local speedFactor = 1 / math.max(CFG.AIM.Smooth, 0.05)
-    local alpha = math.clamp(dt * 60 * speedFactor / 15, 0, 1)
-
+    -- Fórmula do Premium Aim (gruda firme)
+    local alpha = 1 - math.pow(
+        1 - math.clamp(1 - CFG.AIM.Smooth, 0.05, 0.95),
+        dt * 60
+    )
     Camera.CFrame = Camera.CFrame:Lerp(desired, alpha)
 end)
 
@@ -915,7 +899,7 @@ UserInputService.InputEnded:Connect(function(input, gp)
 end)
 
 --=====================================================================
--- LOOP ESP (RenderStepped normal)
+-- LOOP ESP
 --=====================================================================
 RunService.RenderStepped:Connect(function(dt)
     local myPos = Camera.CFrame.Position
@@ -1025,4 +1009,4 @@ end)
 -- BOOT
 --=====================================================================
 updateStatus()
-print("[MonoChrome PRO] Carregado. Inimigo = time diferente do seu.")
+print("[MonoChrome PRO v2] Carregado. Inimigo = time diferente do seu.")
