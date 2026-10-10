@@ -1,5 +1,5 @@
 --=====================================================================
--- MONOCHROME PRO v3  •  ESP (INIMIGO) + AIMBOT (toggle)  •  PT / EN
+-- MONOCHROME PRO v4  •  ESP (INIMIGO) + AIMBOT (toggle) + Seletor de Alvo
 --=====================================================================
 
 local Players           = game:GetService("Players")
@@ -56,8 +56,12 @@ local T = {
         aimEnable   = "Ativar Aimbot",
         aimFov      = "Mostrar FOV",
         aimSmooth   = "Suavidade",
+        aimPartLbl  = "Parte do alvo",
+        partHead    = "CABEÇA",
+        partTorso   = "CORPO",
+        partFeet    = "PÉ",
         aimFovInput = "Raio do FOV (10 - 1000)",
-        aimNote     = "Mira automaticamente em\ninimigos dentro do FOV.",
+        aimNote     = "Mira automática em inimigos\ndentro do FOV.",
         apply       = "APLICAR",
     },
     en = {
@@ -76,6 +80,10 @@ local T = {
         aimEnable   = "Enable Aimbot",
         aimFov      = "Show FOV",
         aimSmooth   = "Smoothness",
+        aimPartLbl  = "Target part",
+        partHead    = "HEAD",
+        partTorso   = "TORSO",
+        partFeet    = "FEET",
         aimFovInput = "FOV radius (10 - 1000)",
         aimNote     = "Auto aims at enemies\ninside the FOV.",
         apply       = "APPLY",
@@ -105,7 +113,7 @@ local CFG = {
         Enabled = false,
         Smooth = 0.25,
         MaxDist = 500,
-        Part = "Head",
+        TargetPart = "Head",       -- "Head" | "Torso" | "Feet"
     },
     FOV = {
         Visible = true,
@@ -137,13 +145,36 @@ local function tw(obj, time, props, style, dir)
 end
 
 --=====================================================================
--- DETECÇÃO
+-- DETECÇÃO DE INIMIGO
 --=====================================================================
 local function isEnemy(plr)
     if plr == LP then return false end
     if not LP.Team then return true end
     if not plr.Team then return true end
     return plr.Team ~= LP.Team
+end
+
+--=====================================================================
+-- PEGA A PARTE DO ALVO (Head / Torso / Feet)
+--=====================================================================
+local function getTargetPart(char)
+    local mode = CFG.AIM.TargetPart
+    if mode == "Head" then
+        return char:FindFirstChild("Head")
+    elseif mode == "Torso" then
+        -- Aceita UpperTorso (R15) ou Torso (R6)
+        return char:FindFirstChild("UpperTorso")
+            or char:FindFirstChild("Torso")
+            or char:FindFirstChild("HumanoidRootPart")
+    elseif mode == "Feet" then
+        -- Pega o membro inferior mais baixo
+        return char:FindFirstChild("LeftFoot")
+            or char:FindFirstChild("RightFoot")
+            or char:FindFirstChild("Left Leg")
+            or char:FindFirstChild("Right Leg")
+            or char:FindFirstChild("HumanoidRootPart")
+    end
+    return char:FindFirstChild("Head")
 end
 
 --=====================================================================
@@ -167,8 +198,8 @@ local ui = new("ScreenGui", {
 
 local main = new("Frame", {
     Name = "Main",
-    Size = UDim2.new(0, 560, 0, 420),
-    Position = UDim2.new(0.5, -280, 0.5, -210),
+    Size = UDim2.new(0, 560, 0, 460),
+    Position = UDim2.new(0.5, -280, 0.5, -230),
     BackgroundColor3 = C.Bg0,
     BackgroundTransparency = 0.05,
     BorderSizePixel = 0,
@@ -319,7 +350,7 @@ local content = new("Frame", {
 })
 
 local minState = false
-local fullSize = UDim2.new(0, 560, 0, 420)
+local fullSize = UDim2.new(0, 560, 0, 460)
 local miniSize = UDim2.new(0, 560, 0, 52)
 
 minBtn.MouseButton1Click:Connect(function()
@@ -329,7 +360,7 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 restBtn.MouseButton1Click:Connect(function()
     if not minState then
-        tw(main, 0.3, { Position = UDim2.new(0.5, -280, 0.5, -210) }, Enum.EasingStyle.Quint)
+        tw(main, 0.3, { Position = UDim2.new(0.5, -280, 0.5, -230) }, Enum.EasingStyle.Quint)
         return
     end
     minState = false
@@ -624,6 +655,99 @@ local function note(parent, key, y)
 end
 
 --=====================================================================
+-- SELETOR DE PARTE DO ALVO (Head / Torso / Feet)
+--=====================================================================
+local partButtons = {}
+
+local function makePartSelector(parent, y)
+    local wrap = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 56),
+        Position = UDim2.new(0, 12, 0, y),
+        BackgroundTransparency = 1,
+        Parent = parent,
+    })
+
+    local lbl = new("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 14),
+        BackgroundTransparency = 1,
+        Text = L("aimPartLbl"),
+        TextColor3 = C.Dim,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = wrap,
+    })
+    table.insert(uiRegistry, { obj = lbl, key = "aimPartLbl" })
+
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 30),
+        Position = UDim2.new(0, 0, 0, 20),
+        BackgroundTransparency = 1,
+        Parent = wrap,
+    })
+
+    local order = { "Head", "Torso", "Feet" }
+    local labelKeys = { Head = "partHead", Torso = "partTorso", Feet = "partFeet" }
+    local total = #order
+    local gap = 6
+    local width = (1 / total)
+
+    for i, partName in ipairs(order) do
+        local btn = new("TextButton", {
+            Size = UDim2.new(width, -gap, 1, 0),
+            Position = UDim2.new((i - 1) * width, gap / 2, 0, 0),
+            BackgroundColor3 = (CFG.AIM.TargetPart == partName) and C.On or C.Bg2,
+            BackgroundTransparency = (CFG.AIM.TargetPart == partName) and 0 or 0.1,
+            BorderSizePixel = 0,
+            Text = L(labelKeys[partName]),
+            TextColor3 = (CFG.AIM.TargetPart == partName) and C.Black or C.Dim,
+            TextSize = 10,
+            Font = Enum.Font.GothamBold,
+            AutoButtonColor = false,
+            Parent = row,
+        })
+        new("UICorner", { CornerRadius = UDim.new(0, 7), Parent = btn })
+        local stroke = new("UIStroke", {
+            Color = C.Line,
+            Thickness = 1,
+            Transparency = (CFG.AIM.TargetPart == partName) and 0.1 or 0.5,
+            Parent = btn,
+        })
+
+        partButtons[partName] = { btn = btn, stroke = stroke, key = labelKeys[partName] }
+
+        btn.MouseEnter:Connect(function()
+            if CFG.AIM.TargetPart ~= partName then
+                tw(btn, 0.15, { BackgroundColor3 = C.Bg3, BackgroundTransparency = 0 })
+            end
+        end)
+        btn.MouseLeave:Connect(function()
+            if CFG.AIM.TargetPart ~= partName then
+                tw(btn, 0.15, { BackgroundColor3 = C.Bg2, BackgroundTransparency = 0.1 })
+            end
+        end)
+
+        btn.MouseButton1Click:Connect(function()
+            CFG.AIM.TargetPart = partName
+            for _, data in pairs(partButtons) do
+                local active = (partName == CFG.AIM.TargetPart)
+                -- aplica em todos: reset
+                tw(data.btn, 0.15, {
+                    BackgroundColor3 = C.Bg2,
+                    BackgroundTransparency = 0.1,
+                })
+                tw(data.btn, 0.15, { TextColor3 = C.Dim })
+                tw(data.stroke, 0.15, { Transparency = 0.5 })
+            end
+            -- aplica no ativo
+            tw(btn, 0.15, { BackgroundColor3 = C.On, BackgroundTransparency = 0 })
+            tw(btn, 0.15, { TextColor3 = C.Black })
+            tw(stroke, 0.15, { Transparency = 0.1 })
+        end)
+    end
+end
+
+--=====================================================================
 -- LAYOUT
 --=====================================================================
 local col1 = new("Frame", {
@@ -639,7 +763,8 @@ local col2 = new("Frame", {
     Parent = content,
 })
 
-local pESP = section(col1, "secESP", 0, 270)
+-- COLUNA 1 — ESP
+local pESP = section(col1, "secESP", 0, 280)
 local espToggle = toggle(pESP, "espEnable", 46, CFG.ESP.Enabled, function(v)
     CFG.ESP.Enabled = v
     updateStatus()
@@ -652,9 +777,10 @@ toggle(pESP, "espBox",  102, CFG.ESP.ShowBox,       function(v) CFG.ESP.ShowBox 
 toggle(pESP, "espName", 130, CFG.ESP.ShowName,      function(v) CFG.ESP.ShowName = v end)
 toggle(pESP, "espDist", 158, CFG.ESP.ShowDist,      function(v) CFG.ESP.ShowDist = v end)
 toggle(pESP, "espHp",   186, CFG.ESP.ShowHealth,    function(v) CFG.ESP.ShowHealth = v end)
-note(pESP, "espNote", 222)
+note(pESP, "espNote", 224)
 
-local pAIM = section(col2, "secAim", 0, 270)
+-- COLUNA 2 — AIMBOT
+local pAIM = section(col2, "secAim", 0, 400)
 local aimToggle = toggle(pAIM, "aimEnable", 46, CFG.AIM.Enabled, function(v)
     CFG.AIM.Enabled = v
     updateStatus()
@@ -670,7 +796,11 @@ numInput(pAIM, "aimFovInput", 148, CFG.FOV.Radius, 10, 1000, function(v)
     CFG.FOV.Radius = v
     redrawFov()
 end)
-note(pAIM, "aimNote", 222)
+
+-- Seletor de parte do alvo (logo abaixo do input FOV)
+makePartSelector(pAIM, 212)
+
+note(pAIM, "aimNote", 280)
 
 --=====================================================================
 -- STATUS
@@ -838,7 +968,7 @@ local function findTarget()
         if not isEnemy(plr) then continue end
         local ch = plr.Character
         if not ch then continue end
-        local part = ch:FindFirstChild(CFG.AIM.Part)
+        local part = getTargetPart(ch)
         local hrp  = ch:FindFirstChild("HumanoidRootPart")
         local hum  = ch:FindFirstChildOfClass("Humanoid")
         if not (part and hrp and hum and hum.Health > 0) then continue end
@@ -855,7 +985,7 @@ local function findTarget()
 end
 
 --=====================================================================
--- AIMBOT — MIRA SUAVE (gruda firme)
+-- AIMBOT — mira suave
 --=====================================================================
 RunService.RenderStepped:Connect(function(dt)
     if not CFG.AIM.Enabled then return end
@@ -866,7 +996,6 @@ RunService.RenderStepped:Connect(function(dt)
     local camPos = Camera.CFrame.Position
     local desired = CFrame.new(camPos, target.Position)
 
-    -- Fórmula original que gruda
     local alpha = 1 - math.pow(
         1 - math.clamp(1 - CFG.AIM.Smooth, 0.05, 0.95),
         dt * 60
@@ -988,6 +1117,12 @@ langBtn.MouseButton1Click:Connect(function()
             entry.obj.Text = L(entry.key)
         end
     end
+    -- atualiza botões do seletor de parte
+    for partName, data in pairs(partButtons) do
+        if data.btn and data.btn.Parent then
+            data.btn.Text = L(data.key)
+        end
+    end
     titleLbl.Text = L("title")
     langBtn.Text = L("langBtn")
     updateStatus()
@@ -997,4 +1132,4 @@ end)
 -- BOOT
 --=====================================================================
 updateStatus()
-print("[MonoChrome PRO v3] Carregado. Aimbot: toggle no menu ou RAlt.")
+print("[MonoChrome PRO v4] Carregado. Aimbot mirará em:", CFG.AIM.TargetPart)
