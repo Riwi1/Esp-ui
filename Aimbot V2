@@ -1,0 +1,923 @@
+--=====================================================================
+-- MONOCHROME PRO  •  ESP (INIMIGO) + AIMBOT
+--=====================================================================
+
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local TweenService      = game:GetService("TweenService")
+local Workspace         = game:GetService("Workspace")
+
+local LP = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local UIParent = LP:WaitForChild("PlayerGui")
+
+--=====================================================================
+-- PALETA
+--=====================================================================
+local C = {
+    Bg0 = Color3.fromRGB(10, 10, 12),
+    Bg1 = Color3.fromRGB(18, 18, 21),
+    Bg2 = Color3.fromRGB(26, 26, 30),
+    Bg3 = Color3.fromRGB(34, 34, 40),
+    Line = Color3.fromRGB(50, 50, 58),
+    LineSoft = Color3.fromRGB(38, 38, 44),
+    Text = Color3.fromRGB(240, 240, 245),
+    Dim = Color3.fromRGB(150, 150, 160),
+    Mute = Color3.fromRGB(90, 90, 100),
+    White = Color3.fromRGB(255, 255, 255),
+    Black = Color3.fromRGB(0, 0, 0),
+    On = Color3.fromRGB(245, 245, 250),
+    Off = Color3.fromRGB(60, 60, 68),
+}
+
+local ESP_COLOR = Color3.fromRGB(230, 60, 60)  -- vermelho (inimigo)
+local FOV_COLOR = Color3.fromRGB(245, 245, 250) -- branco
+
+--=====================================================================
+-- CONFIG
+--=====================================================================
+local CFG = {
+    ESP = {
+        Enabled = false,
+        ShowHighlight = true,
+        ShowBox = true,
+        ShowName = true,
+        ShowDist = true,
+        ShowHealth = true,
+        MaxDist = 500,
+        Transparency = 0.15,
+        Thickness = 1.5,
+    },
+    AIM = {
+        Enabled = false,
+        Holding = false,
+        Smooth = 0.25,
+        MaxDist = 500,
+        Part = "Head",
+    },
+    FOV = {
+        Visible = true,
+        Radius = 150,
+        Thickness = 1.5,
+        Transparency = 0.35,
+        Color = FOV_COLOR,
+    },
+    Keys = {
+        ESP = Enum.KeyCode.RightControl,
+        AIM = Enum.KeyCode.RightAlt,
+    },
+}
+
+--=====================================================================
+-- HELPERS
+--=====================================================================
+local function new(cls, props)
+    local i = Instance.new(cls)
+    for k, v in pairs(props or {}) do i[k] = v end
+    return i
+end
+
+local function tw(obj, time, props, style, dir)
+    local info = TweenInfo.new(time or 0.22, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out)
+    local t = TweenService:Create(obj, info, props)
+    t:Play()
+    return t
+end
+
+--=====================================================================
+-- DETECÇÃO DE INIMIGO (time diferente do seu)
+--=====================================================================
+local function isEnemy(plr)
+    if plr == LP then return false end
+    -- Se você não tem time → todos são inimigos
+    if not LP.Team then return true end
+    -- Se ele não tem time e você tem → não é do seu time
+    if not plr.Team then return true end
+    -- Times diferentes → inimigo
+    return plr.Team ~= LP.Team
+end
+
+--=====================================================================
+-- LIMPEZA
+--=====================================================================
+for _, n in ipairs({"MonoProUI", "MonoProOverlay", "MonoProFov"}) do
+    local old = UIParent:FindFirstChild(n)
+    if old then old:Destroy() end
+end
+
+--=====================================================================
+-- UI
+--=====================================================================
+local ui = new("ScreenGui", {
+    Name = "MonoProUI",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    Parent = UIParent,
+})
+
+local main = new("Frame", {
+    Name = "Main",
+    Size = UDim2.new(0, 560, 0, 400),
+    Position = UDim2.new(0.5, -280, 0.5, -200),
+    BackgroundColor3 = C.Bg0,
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    Parent = ui,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 16), Parent = main })
+new("UIStroke", { Color = C.Line, Thickness = 1, Transparency = 0.3, Parent = main })
+new("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 20, 24)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 8, 10)),
+    }),
+    Rotation = 90,
+    Parent = main,
+})
+
+-- TOP BAR
+local top = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 52),
+    BackgroundColor3 = C.Bg1,
+    BackgroundTransparency = 0.2,
+    BorderSizePixel = 0,
+    Parent = main,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 16), Parent = top })
+new("Frame", {
+    Size = UDim2.new(1, -32, 0, 1),
+    Position = UDim2.new(0, 16, 1, -1),
+    BackgroundColor3 = C.LineSoft,
+    BorderSizePixel = 0,
+    Parent = top,
+})
+new("TextLabel", {
+    Size = UDim2.new(0, 22, 0, 22),
+    Position = UDim2.new(0, 20, 0.5, -11),
+    BackgroundTransparency = 1,
+    Text = "◆",
+    TextColor3 = C.Text,
+    TextSize = 20,
+    Font = Enum.Font.GothamBold,
+    Parent = top,
+})
+new("TextLabel", {
+    Size = UDim2.new(0, 260, 1, 0),
+    Position = UDim2.new(0, 50, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "MONOCHROME  •  PRO",
+    TextColor3 = C.Text,
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = top,
+})
+
+-- STATUS
+local status = new("Frame", {
+    Size = UDim2.new(0, 120, 0, 26),
+    Position = UDim2.new(1, -250, 0.5, -13),
+    BackgroundColor3 = C.Bg2,
+    BackgroundTransparency = 0.2,
+    BorderSizePixel = 0,
+    Parent = top,
+})
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = status })
+local statusStroke = new("UIStroke", { Color = C.Line, Thickness = 1, Transparency = 0.5, Parent = status })
+local statusDot = new("Frame", {
+    Size = UDim2.new(0, 6, 0, 6),
+    Position = UDim2.new(0, 12, 0.5, -3),
+    BackgroundColor3 = C.Off,
+    BorderSizePixel = 0,
+    Parent = status,
+})
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = statusDot })
+local statusTxt = new("TextLabel", {
+    Size = UDim2.new(1, -24, 1, 0),
+    Position = UDim2.new(0, 24, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "OFF",
+    TextColor3 = C.Dim,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = status,
+})
+
+-- CONTROLES
+local function ctrlBtn(txt, xOff, hover)
+    local b = new("TextButton", {
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(1, xOff, 0.5, -15),
+        BackgroundColor3 = C.Bg2,
+        BackgroundTransparency = 0.4,
+        BorderSizePixel = 0,
+        Text = txt,
+        TextColor3 = C.Dim,
+        TextSize = 13,
+        Font = Enum.Font.GothamBold,
+        AutoButtonColor = false,
+        Parent = top,
+    })
+    new("UICorner", { CornerRadius = UDim.new(0, 9), Parent = b })
+    local s = new("UIStroke", { Color = C.Line, Thickness = 1, Transparency = 0.6, Parent = b })
+    b.MouseEnter:Connect(function()
+        tw(b, 0.15, { BackgroundColor3 = hover, BackgroundTransparency = 0 })
+        tw(b, 0.15, { TextColor3 = C.White })
+        tw(s, 0.15, { Transparency = 0.2 })
+    end)
+    b.MouseLeave:Connect(function()
+        tw(b, 0.15, { BackgroundColor3 = C.Bg2, BackgroundTransparency = 0.4 })
+        tw(b, 0.15, { TextColor3 = C.Dim })
+        tw(s, 0.15, { Transparency = 0.6 })
+    end)
+    return b
+end
+
+local minBtn = ctrlBtn("—", -110, C.Bg3)
+local restBtn = ctrlBtn("▢", -76, C.Bg3)
+local closeBtn = ctrlBtn("✕", -42, Color3.fromRGB(60, 30, 30))
+
+-- CONTENT
+local content = new("Frame", {
+    Size = UDim2.new(1, -28, 1, -68),
+    Position = UDim2.new(0, 14, 0, 56),
+    BackgroundTransparency = 1,
+    ClipsDescendants = true,
+    Parent = main,
+})
+
+local minState = false
+local fullSize = UDim2.new(0, 560, 0, 400)
+local miniSize = UDim2.new(0, 560, 0, 52)
+
+minBtn.MouseButton1Click:Connect(function()
+    if minState then return end
+    minState = true
+    tw(main, 0.28, { Size = miniSize }, Enum.EasingStyle.Quint)
+end)
+restBtn.MouseButton1Click:Connect(function()
+    if not minState then
+        tw(main, 0.3, { Position = UDim2.new(0.5, -280, 0.5, -200) }, Enum.EasingStyle.Quint)
+        return
+    end
+    minState = false
+    tw(main, 0.28, { Size = fullSize }, Enum.EasingStyle.Quint)
+end)
+closeBtn.MouseButton1Click:Connect(function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then
+            local h = p.Character:FindFirstChild("MonoPro_HL")
+            if h then h:Destroy() end
+        end
+    end
+    tw(main, 0.2, { Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, Enum.EasingStyle.Quint)
+    task.wait(0.22)
+    ui:Destroy()
+    for _, n in ipairs({"MonoProOverlay", "MonoProFov"}) do
+        local o = UIParent:FindFirstChild(n)
+        if o then o:Destroy() end
+    end
+end)
+
+-- DRAG
+do
+    local drag, start, startPos
+    top.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            drag, start, startPos = true, i.Position, main.Position
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.End then drag = false end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
+            local d = i.Position - start
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+end
+
+--=====================================================================
+-- COMPONENTES
+--=====================================================================
+local function section(parent, title, y, h)
+    local s = new("Frame", {
+        Size = UDim2.new(1, 0, 0, h),
+        Position = UDim2.new(0, 0, 0, y),
+        BackgroundColor3 = C.Bg1,
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Parent = parent,
+    })
+    new("UICorner", { CornerRadius = UDim.new(0, 12), Parent = s })
+    new("UIStroke", { Color = C.LineSoft, Thickness = 1, Transparency = 0.5, Parent = s })
+    new("TextLabel", {
+        Size = UDim2.new(1, -24, 0, 26),
+        Position = UDim2.new(0, 14, 0, 8),
+        BackgroundTransparency = 1,
+        Text = title,
+        TextColor3 = C.Dim,
+        TextSize = 10,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = s,
+    })
+    new("Frame", {
+        Size = UDim2.new(1, -28, 0, 1),
+        Position = UDim2.new(0, 14, 0, 34),
+        BackgroundColor3 = C.LineSoft,
+        BorderSizePixel = 0,
+        Parent = s,
+    })
+    return s
+end
+
+local function toggle(parent, label, y, init, cb)
+    local row = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 26),
+        Position = UDim2.new(0, 12, 0, y),
+        BackgroundTransparency = 1,
+        Parent = parent,
+    })
+    local lbl = new("TextLabel", {
+        Size = UDim2.new(0.7, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = label,
+        TextColor3 = init and C.Text or C.Dim,
+        TextSize = 11,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = row,
+    })
+    local track = new("Frame", {
+        Size = UDim2.new(0, 36, 0, 18),
+        Position = UDim2.new(1, -36, 0.5, -9),
+        BackgroundColor3 = init and C.On or C.Off,
+        BorderSizePixel = 0,
+        Parent = row,
+    })
+    new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
+    local knob = new("Frame", {
+        Size = UDim2.new(0, 12, 0, 12),
+        Position = init and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6),
+        BackgroundColor3 = init and C.Black or C.Mute,
+        BorderSizePixel = 0,
+        Parent = track,
+    })
+    new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
+    local state = init
+    local function set(v)
+        state = v
+        tw(track, 0.18, { BackgroundColor3 = v and C.On or C.Off })
+        tw(knob, 0.18, {
+            Position = v and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6),
+            BackgroundColor3 = v and C.Black or C.Mute,
+        }, Enum.EasingStyle.Quint)
+        tw(lbl, 0.15, { TextColor3 = v and C.Text or C.Dim })
+        if cb then cb(v) end
+    end
+    local hit = new("TextButton", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", Parent = row })
+    hit.MouseButton1Click:Connect(function() set(not state) end)
+    return { set = set, get = function() return state end }
+end
+
+local function slider(parent, label, y, init, min, max, cb)
+    local wrap = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 38),
+        Position = UDim2.new(0, 12, 0, y),
+        BackgroundTransparency = 1,
+        Parent = parent,
+    })
+    new("TextLabel", {
+        Size = UDim2.new(0.6, 0, 0, 14),
+        BackgroundTransparency = 1,
+        Text = label,
+        TextColor3 = C.Dim,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = wrap,
+    })
+    local val = new("TextLabel", {
+        Size = UDim2.new(0.4, 0, 0, 14),
+        Position = UDim2.new(0.6, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Text = string.format("%.2f", init),
+        TextColor3 = C.Text,
+        TextSize = 10,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = wrap,
+    })
+    local bar = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 4),
+        Position = UDim2.new(0, 0, 0, 22),
+        BackgroundColor3 = C.LineSoft,
+        BorderSizePixel = 0,
+        Parent = wrap,
+    })
+    new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = bar })
+    local fill = new("Frame", {
+        Size = UDim2.new((init - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = C.Text,
+        BorderSizePixel = 0,
+        Parent = bar,
+    })
+    new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = fill })
+    local knob = new("Frame", {
+        Size = UDim2.new(0, 10, 0, 10),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new((init - min) / (max - min), 0, 0.5, 0),
+        BackgroundColor3 = C.White,
+        BorderSizePixel = 0,
+        Parent = bar,
+    })
+    new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
+    local hit = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 16),
+        Position = UDim2.new(0, 0, 0, 16),
+        BackgroundTransparency = 1,
+        Text = "",
+        Parent = wrap,
+    })
+    local dragging = false
+    local function update(rel)
+        rel = math.clamp(rel, 0, 1)
+        local v = min + (max - min) * rel
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        knob.Position = UDim2.new(rel, 0, 0.5, 0)
+        val.Text = string.format("%.2f", v)
+        if cb then cb(v) end
+    end
+    hit.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            update((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            update((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
+local function numInput(parent, label, y, init, min, max, onApply)
+    local wrap = new("Frame", {
+        Size = UDim2.new(1, -24, 0, 48),
+        Position = UDim2.new(0, 12, 0, y),
+        BackgroundTransparency = 1,
+        Parent = parent,
+    })
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 14),
+        BackgroundTransparency = 1,
+        Text = label,
+        TextColor3 = C.Dim,
+        TextSize = 10,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = wrap,
+    })
+    local box = new("TextBox", {
+        Size = UDim2.new(0.55, -4, 0, 26),
+        Position = UDim2.new(0, 0, 0, 18),
+        BackgroundColor3 = C.Bg2,
+        BorderSizePixel = 0,
+        Text = tostring(init),
+        TextColor3 = C.Text,
+        TextSize = 11,
+        Font = Enum.Font.GothamMedium,
+        ClearTextOnFocus = false,
+        Parent = wrap,
+    })
+    new("UICorner", { CornerRadius = UDim.new(0, 7), Parent = box })
+    local bs = new("UIStroke", { Color = C.Line, Thickness = 1, Transparency = 0.5, Parent = box })
+    box.Focused:Connect(function() tw(bs, 0.15, { Color = C.Text, Transparency = 0.2 }) end)
+    box.FocusLost:Connect(function() tw(bs, 0.15, { Color = C.Line, Transparency = 0.5 }) end)
+    local btn = new("TextButton", {
+        Size = UDim2.new(0.45, -4, 0, 26),
+        Position = UDim2.new(0.55, 4, 0, 18),
+        BackgroundColor3 = C.Text,
+        BorderSizePixel = 0,
+        Text = "APLICAR",
+        TextColor3 = C.Black,
+        TextSize = 10,
+        Font = Enum.Font.GothamBold,
+        AutoButtonColor = false,
+        Parent = wrap,
+    })
+    new("UICorner", { CornerRadius = UDim.new(0, 7), Parent = btn })
+    btn.MouseEnter:Connect(function() tw(btn, 0.12, { BackgroundColor3 = Color3.fromRGB(220, 220, 225) }) end)
+    btn.MouseLeave:Connect(function() tw(btn, 0.12, { BackgroundColor3 = C.Text }) end)
+    btn.MouseButton1Click:Connect(function()
+        local n = tonumber(box.Text)
+        if not n or n ~= n or n < min or n > max then
+            tw(bs, 0.12, { Color = Color3.fromRGB(230, 90, 90), Transparency = 0.1 })
+            task.delay(0.5, function() tw(bs, 0.2, { Color = C.Line, Transparency = 0.5 }) end)
+            return
+        end
+        n = math.floor(n * 10 + 0.5) / 10
+        box.Text = tostring(n)
+        if onApply then onApply(n) end
+    end)
+end
+
+--=====================================================================
+-- LAYOUT — 2 COLUNAS
+--=====================================================================
+local col1 = new("Frame", {
+    Size = UDim2.new(0.5, -8, 1, 0),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Parent = content,
+})
+local col2 = new("Frame", {
+    Size = UDim2.new(0.5, -8, 1, 0),
+    Position = UDim2.new(0.5, 8, 0, 0),
+    BackgroundTransparency = 1,
+    Parent = content,
+})
+
+-- COLUNA 1 — ESP
+local pESP = section(col1, "ESP  •  INIMIGO", 0, 250)
+
+local espToggle = toggle(pESP, "Ativar ESP", 46, CFG.ESP.Enabled, function(v)
+    CFG.ESP.Enabled = v
+    updateStatus()
+    if not v then
+        for _, d in pairs(tracked) do hidePlayer(d) end
+    end
+end)
+toggle(pESP, "Contorno", 74,  CFG.ESP.ShowHighlight, function(v) CFG.ESP.ShowHighlight = v end)
+toggle(pESP, "Caixa",    102, CFG.ESP.ShowBox,       function(v) CFG.ESP.ShowBox = v end)
+toggle(pESP, "Nome",     130, CFG.ESP.ShowName,      function(v) CFG.ESP.ShowName = v end)
+toggle(pESP, "Distância",158, CFG.ESP.ShowDist,      function(v) CFG.ESP.ShowDist = v end)
+toggle(pESP, "Vida",     186, CFG.ESP.ShowHealth,    function(v) CFG.ESP.ShowHealth = v end)
+
+new("TextLabel", {
+    Size = UDim2.new(1, -24, 0, 30),
+    Position = UDim2.new(0, 12, 0, 214),
+    BackgroundTransparency = 1,
+    Text = "Mostra apenas jogadores de\noutro time (vermelho).",
+    TextColor3 = C.Mute,
+    TextSize = 9,
+    Font = Enum.Font.GothamMedium,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    Parent = pESP,
+})
+
+-- COLUNA 2 — AIMBOT
+local pAIM = section(col2, "AIMBOT  •  (RAlt)", 0, 250)
+
+local aimToggle = toggle(pAIM, "Ativar Aimbot", 46, CFG.AIM.Enabled, function(v)
+    CFG.AIM.Enabled = v
+    updateStatus()
+end)
+toggle(pAIM, "Mostrar FOV", 74, CFG.FOV.Visible, function(v)
+    CFG.FOV.Visible = v
+    fovGui.Enabled = v
+end)
+slider(pAIM, "Suavidade", 102, CFG.AIM.Smooth, 0, 1, function(v)
+    CFG.AIM.Smooth = v
+end)
+numInput(pAIM, "Raio do FOV (10 - 1000)", 148, CFG.FOV.Radius, 10, 1000, function(v)
+    CFG.FOV.Radius = v
+    redrawFov()
+end)
+
+new("TextLabel", {
+    Size = UDim2.new(1, -24, 0, 30),
+    Position = UDim2.new(0, 12, 0, 214),
+    BackgroundTransparency = 1,
+    Text = "Segure RAlt para mirar.\nSó mira em inimigos.",
+    TextColor3 = C.Mute,
+    TextSize = 9,
+    Font = Enum.Font.GothamMedium,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    Parent = pAIM,
+})
+
+--=====================================================================
+-- STATUS
+--=====================================================================
+function updateStatus()
+    local parts = {}
+    if CFG.ESP.Enabled then table.insert(parts, "ESP") end
+    if CFG.AIM.Enabled then table.insert(parts, "AIM") end
+    local any = #parts > 0
+    statusTxt.Text = any and table.concat(parts, " • ") or "OFF"
+    tw(statusDot, 0.2, { BackgroundColor3 = any and C.White or C.Off })
+    tw(statusTxt, 0.2, { TextColor3 = any and C.Text or C.Dim })
+    tw(statusStroke, 0.2, { Transparency = any and 0.15 or 0.5 })
+end
+
+--=====================================================================
+-- FOV OVERLAY
+--=====================================================================
+local fovGui = new("ScreenGui", {
+    Name = "MonoProFov",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    Parent = UIParent,
+})
+
+local ring = new("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(0, CFG.FOV.Radius * 2, 0, CFG.FOV.Radius * 2),
+    BackgroundTransparency = 1,
+    Parent = fovGui,
+})
+
+local SEG = 24
+local segs = {}
+for i = 1, SEG do
+    local a = (i / SEG) * math.pi * 2
+    local s = new("Frame", {
+        Size = UDim2.new(1, 0, 0, CFG.FOV.Thickness),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, math.cos(a) * CFG.FOV.Radius, 0.5, math.sin(a) * CFG.FOV.Radius),
+        Rotation = math.deg(a) + 90,
+        BackgroundColor3 = CFG.FOV.Color,
+        BackgroundTransparency = CFG.FOV.Transparency,
+        BorderSizePixel = 0,
+        Parent = ring,
+    })
+    new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = s })
+    table.insert(segs, s)
+end
+
+function redrawFov()
+    local r = CFG.FOV.Radius
+    ring.Size = UDim2.new(0, r * 2, 0, r * 2)
+    for i, s in ipairs(segs) do
+        local a = (i / SEG) * math.pi * 2
+        s.Position = UDim2.new(0.5, math.cos(a) * r, 0.5, math.sin(a) * r)
+        s.Size = UDim2.new(1, 0, 0, CFG.FOV.Thickness)
+        s.BackgroundColor3 = CFG.FOV.Color
+        s.BackgroundTransparency = CFG.FOV.Transparency
+    end
+    fovGui.Enabled = CFG.FOV.Visible
+end
+redrawFov()
+
+--=====================================================================
+-- ESP OVERLAY
+--=====================================================================
+local overlay = new("ScreenGui", {
+    Name = "MonoProOverlay",
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    Parent = UIParent,
+})
+
+local tracked = {}
+
+local function hidePlayer(d)
+    if d.hl then d.hl.Enabled = false end
+    if d.box then d.box.Visible = false end
+    if d.name then d.name.Visible = false end
+    if d.dist then d.dist.Visible = false end
+    if d.hpBg then d.hpBg.Visible = false end
+end
+
+local function destroyPlayer(plr)
+    local d = tracked[plr]
+    if not d then return end
+    for _, o in pairs(d) do
+        if typeof(o) == "Instance" and o.Parent then o:Destroy() end
+    end
+    tracked[plr] = nil
+end
+
+local function buildPlayer(plr)
+    destroyPlayer(plr)
+    local ch = plr.Character
+    if not ch then return end
+    local col = ESP_COLOR
+
+    local hl = Instance.new("Highlight")
+    hl.Name = "MonoPro_HL"
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.FillTransparency = 1
+    hl.OutlineTransparency = CFG.ESP.Transparency
+    hl.FillColor = col
+    hl.OutlineColor = col
+    hl.Adornee = ch
+    hl.Parent = ch
+
+    local box = new("Frame", { BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, Parent = overlay })
+    local bs = new("UIStroke", { Color = col, Thickness = CFG.ESP.Thickness, Transparency = CFG.ESP.Transparency, Parent = box })
+
+    local name = new("TextLabel", {
+        BackgroundTransparency = 1, Text = plr.Name, TextColor3 = col,
+        TextTransparency = CFG.ESP.Transparency, TextSize = 12,
+        Font = Enum.Font.GothamBold, TextStrokeTransparency = 0.4,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.new(0, 160, 0, 14),
+        AnchorPoint = Vector2.new(0.5, 1), Visible = false, Parent = overlay,
+    })
+    local dist = new("TextLabel", {
+        BackgroundTransparency = 1, Text = "0m", TextColor3 = col,
+        TextTransparency = CFG.ESP.Transparency, TextSize = 11,
+        Font = Enum.Font.GothamMedium, TextStrokeTransparency = 0.4,
+        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.new(0, 100, 0, 12),
+        AnchorPoint = Vector2.new(0.5, 0), Visible = false, Parent = overlay,
+    })
+    local hpBg = new("Frame", {
+        BackgroundColor3 = Color3.fromRGB(20, 20, 22), BackgroundTransparency = 0.35,
+        BorderSizePixel = 0, Visible = false, Parent = overlay,
+    })
+    new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = hpBg })
+    local hpFg = new("Frame", {
+        BackgroundColor3 = col, BackgroundTransparency = CFG.ESP.Transparency,
+        BorderSizePixel = 0, Size = UDim2.new(1, 0, 1, 0), Parent = hpBg,
+    })
+    new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = hpFg })
+
+    tracked[plr] = { hl = hl, box = box, boxStroke = bs, name = name, dist = dist, hpBg = hpBg, hpFg = hpFg }
+end
+
+local function onPlayer(plr)
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.3)
+        if CFG.ESP.Enabled and isEnemy(plr) then buildPlayer(plr) end
+    end)
+    if plr.Character and CFG.ESP.Enabled and isEnemy(plr) then buildPlayer(plr) end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do onPlayer(p) end
+Players.PlayerAdded:Connect(onPlayer)
+Players.PlayerRemoving:Connect(destroyPlayer)
+
+--=====================================================================
+-- AIMBOT — busca alvo
+--=====================================================================
+local function findTarget()
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local best, bestDist = nil, CFG.FOV.Radius
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if not isEnemy(plr) then continue end
+        local ch = plr.Character
+        if not ch then continue end
+        local part = ch:FindFirstChild(CFG.AIM.Part)
+        local hrp  = ch:FindFirstChild("HumanoidRootPart")
+        local hum  = ch:FindFirstChildOfClass("Humanoid")
+        if not (part and hrp and hum and hum.Health > 0) then continue end
+        if (hrp.Position - Camera.CFrame.Position).Magnitude > CFG.AIM.MaxDist then continue end
+        local sp, onScreen = Camera:WorldToViewportPoint(part.Position)
+        if not onScreen then continue end
+        local d = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+        if d < bestDist then
+            bestDist = d
+            best = part
+        end
+    end
+    return best
+end
+
+--=====================================================================
+-- KEYBINDS
+--=====================================================================
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == CFG.Keys.ESP then
+        espToggle.set(not espToggle.get())
+    elseif input.KeyCode == CFG.Keys.AIM then
+        CFG.AIM.Holding = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == CFG.Keys.AIM then
+        CFG.AIM.Holding = false
+    end
+end)
+
+--=====================================================================
+-- LOOP
+--=====================================================================
+RunService.RenderStepped:Connect(function(dt)
+    -- AIMBOT
+    if CFG.AIM.Enabled and CFG.AIM.Holding then
+        local target = findTarget()
+        if target then
+            local camPos = Camera.CFrame.Position
+            local desired = CFrame.new(camPos, target.Position)
+            local alpha = 1 - math.pow(1 - math.clamp(1 - CFG.AIM.Smooth, 0.05, 0.95), dt * 60)
+            Camera.CFrame = Camera.CFrame:Lerp(desired, alpha)
+        end
+    end
+
+    local myPos = Camera.CFrame.Position
+
+    -- ESP
+    if CFG.ESP.Enabled then
+        for plr, d in pairs(tracked) do
+            -- Se deixou de ser inimigo (trocou de time) → remove
+            if not isEnemy(plr) then
+                destroyPlayer(plr)
+                continue
+            end
+            local ch = plr.Character
+            if not ch or not ch.Parent then destroyPlayer(plr); continue end
+            local hrp = ch:FindFirstChild("HumanoidRootPart")
+            local head = ch:FindFirstChild("Head")
+            local hum = ch:FindFirstChildOfClass("Humanoid")
+            local hide = false
+            if not (hrp and head and hum) or hum.Health <= 0 then hide = true end
+            if not hide and (hrp.Position - myPos).Magnitude > CFG.ESP.MaxDist then hide = true end
+
+            if hide then
+                hidePlayer(d)
+                continue
+            end
+
+            if d.hl then d.hl.Enabled = CFG.ESP.ShowHighlight end
+
+            local hp, onH = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+            local fp, onF = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+
+            if not onH or not onF then
+                hidePlayer(d)
+                continue
+            end
+
+            local topX, topY = hp.X, hp.Y
+            local botX, botY = fp.X, fp.Y
+            local bH = math.abs(botY - topY)
+            local bW = bH * 0.55
+            local bX = (topX + botX) / 2 - bW / 2
+            local bY = math.min(topY, botY)
+
+            if CFG.ESP.ShowBox then
+                d.box.Visible = true
+                d.box.Position = UDim2.new(0, bX, 0, bY)
+                d.box.Size = UDim2.new(0, bW, 0, bH)
+                d.boxStroke.Enabled = true
+            else
+                d.box.Visible = false
+                d.boxStroke.Enabled = false
+            end
+
+            if CFG.ESP.ShowName then
+                d.name.Visible = true
+                d.name.Position = UDim2.new(0, topX, 0, bY - 4)
+                d.name.Text = plr.Name
+            else
+                d.name.Visible = false
+            end
+
+            if CFG.ESP.ShowDist then
+                local dist = (hrp.Position - myPos).Magnitude
+                d.dist.Visible = true
+                d.dist.Position = UDim2.new(0, topX, 0, bY + bH + 2)
+                d.dist.Text = string.format("%dm", math.floor(dist))
+            else
+                d.dist.Visible = false
+            end
+
+            if CFG.ESP.ShowHealth then
+                d.hpBg.Visible = true
+                local ratio = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+                d.hpBg.Position = UDim2.new(0, bX - 8, 0, bY)
+                d.hpBg.Size = UDim2.new(0, 3, 0, bH)
+                d.hpFg.Size = UDim2.new(1, 0, ratio, 0)
+                d.hpFg.Position = UDim2.new(0, 0, 1 - ratio, 0)
+            else
+                d.hpBg.Visible = false
+            end
+        end
+
+        -- Reconstrói quem não está sendo rastreado
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if isEnemy(plr) and plr.Character and not tracked[plr] then
+                buildPlayer(plr)
+            end
+        end
+    else
+        for _, d in pairs(tracked) do hidePlayer(d) end
+    end
+end)
+
+--=====================================================================
+-- BOOT
+--=====================================================================
+updateStatus()
+print("[MonoChrome PRO] Carregado. Inimigo = time diferente do seu.")
